@@ -4,7 +4,11 @@
     "$className": "DataModel",
     
     "ReplicatedStorage": {
-      "$path": "src/ReplicatedStorage"
+      "$className": "ReplicatedStorage",
+      
+      "assets": {
+        "$path": "src/assets"
+      }
     },
 
     "ServerScriptService": {
