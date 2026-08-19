@@ -10,19 +10,19 @@
     "ServerScriptService": {
       "$className": "ServerScriptService",
       
-      "Server": {
+      "TerrainGenerator": {
+        "$path": "src/server/TerrainGenerator.module.luau",
+        "$className": "ModuleScript"
+      },
+      
+      "ObjectGenerator": {
+        "$path": "src/server/ObjectGenerator.module.luau",
+        "$className": "ModuleScript"
+      },
+      
+      "Main": {
         "$path": "src/server/init.luau",
-        "$className": "Script",
-        
-        "ObjectGenerator": {
-          "$path": "src/server/ObjectGenerator.module.luau",
-          "$className": "ModuleScript"
-        },
-        
-        "TerrainGenerator": {
-          "$path": "src/server/TerrainGenerator.module.luau",
-          "$className": "ModuleScript"
-        }
+        "$className": "Script"
       }
     },
 
