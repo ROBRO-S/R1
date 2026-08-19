@@ -1,8 +1,9 @@
 print("🚀 Сервер R1 запускается...")
 
 -- Подключаем модули
-local TerrainGen = require(script.TerrainGenerator)
-local ObjectGen = require(script.ObjectGenerator)
+local SSS = game:GetService("ServerScriptService")
+local TerrainGen = require(SSS.TerrainGenerator)
+local ObjectGen = require(SSS.ObjectGenerator)
 
 -- Проверяем флаг мира
 local WorldFlag = workspace:FindFirstChild("WorldGenerated_v1")
