@@ -4,32 +4,26 @@
     "$className": "DataModel",
     
     "ReplicatedStorage": {
-      "$className": "ReplicatedStorage"
+      "$path": "src/ReplicatedStorage" 
     },
 
     "ServerScriptService": {
-      "$className": "ServerScriptService",
-      
       "TerrainGenerator": {
-        "$path": "src/server/TerrainGenerator.module.luau",
-        "$className": "ModuleScript"
+        "$path": "src/server/TerrainGenerator.module.luau"
       },
       
       "ObjectGenerator": {
-        "$path": "src/server/ObjectGenerator.module.luau",
-        "$className": "ModuleScript"
+        "$path": "src/server/ObjectGenerator.module.luau"
       },
       
       "Main": {
-        "$path": "src/server/init.luau",
-        "$className": "Script"
+        "$path": "src/server/init.luau"
       }
     },
 
     "StarterPlayer": {
-      "$className": "StarterPlayer",
       "StarterPlayerScripts": {
-        "$className": "StarterPlayerScripts"
+        "$path": "src/client"
       }
     }
   }
