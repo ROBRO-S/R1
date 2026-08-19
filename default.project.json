@@ -4,7 +4,7 @@
     "$className": "DataModel",
     
     "ReplicatedStorage": {
-      "$path": "src/ReplicatedStorage" 
+      "$path": "src/ReplicatedStorage"
     },
 
     "ServerScriptService": {
@@ -17,7 +17,7 @@
       },
       
       "Main": {
-        "$path": "src/server/init.luau"
+        "$path": "src/server/scripts/Main.server.lua"
       }
     },
 
