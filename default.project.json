@@ -2,28 +2,34 @@
   "name": "R1 Project",
   "tree": {
     "$className": "DataModel",
-
+    
     "ReplicatedStorage": {
-      "$className": "ReplicatedStorage",
-      "Shared": {
-        "$path": "src/shared"
-      }
+      "$className": "ReplicatedStorage"
     },
 
     "ServerScriptService": {
       "$className": "ServerScriptService",
+      
       "Server": {
-        "$path": "src/server"
+        "$path": "src/server/init.luau",
+        "$className": "Script",
+        
+        "ObjectGenerator": {
+          "$path": "src/server/ObjectGenerator.module.luau",
+          "$className": "ModuleScript"
+        },
+        
+        "TerrainGenerator": {
+          "$path": "src/server/TerrainGenerator.module.luau",
+          "$className": "ModuleScript"
+        }
       }
     },
 
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
-        "$className": "StarterPlayerScripts",
-        "Client": {
-          "$path": "src/client"
-        }
+        "$className": "StarterPlayerScripts"
       }
     }
   }
