@@ -36,7 +36,7 @@ function ObjectGenerator.Generate()
 		return
 	end
 
-	print("🌲 Начинаю генерацию с Raycast...")
+	print(" Начинаю генерацию с Raycast...")
 	local startTime = tick()
 	local ThinTreeCount = 0
 	local BigTreeCount = 0
@@ -90,6 +90,12 @@ function ObjectGenerator.Generate()
 							-- 1. ТОНКИЕ ДЕРЕВЬЯ (0.4%)
 							if rand < 0.004 then
 								local newTree = ThinTreeTemplate:Clone()
+								
+								-- 🔥 ЕДИНСТВЕННОЕ ИЗМЕНЕНИЕ: Страховка от потери PrimaryPart при экспорте
+								if not newTree.PrimaryPart then
+									newTree.PrimaryPart = newTree:FindFirstChildWhichIsA("BasePart")
+								end
+								
 								pcall(function() newTree:ScaleTo(Vector3.new(0.35, 0.35, 0.35)) end)
 								newTree:SetPrimaryPartCFrame(CFrame.new(worldX, baseY + 20, worldZ))
 								newTree.Parent = workspace
@@ -121,6 +127,12 @@ function ObjectGenerator.Generate()
 								-- 2. ОГРОМНЫЕ ДЕРЕВЬЯ (0.1%)
 							elseif rand < 0.005 then
 								local bigTree = ThinTreeTemplate:Clone()
+								
+								--  ТА ЖЕ СТРАХОВКА ДЛЯ БОЛЬШИХ ДЕРЕВЬЕВ
+								if not bigTree.PrimaryPart then
+									bigTree.PrimaryPart = bigTree:FindFirstChildWhichIsA("BasePart")
+								end
+								
 								pcall(function() bigTree:ScaleTo(Vector3.new(1.5, 1.5, 1.5)) end)
 								bigTree:SetPrimaryPartCFrame(CFrame.new(worldX, baseY + 20, worldZ))
 								bigTree.Parent = workspace
