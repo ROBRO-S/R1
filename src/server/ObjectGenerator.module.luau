@@ -130,13 +130,13 @@ function ObjectGenerator.Generate()
                                 local sy = getExactSurfaceY(worldX, worldZ)
                                 if sy then
                                     local stick = Instance.new("Part")
-                                    stick.Size = Vector3.new(0.8, 0.2, 0.2)
+                                    stick.Size = Vector3.new(2.4, 0.6, 0.6)
                                     stick.Anchored = true
                                     stick.Color = Color3.fromRGB(120, 80, 40)
                                     stick.Shape = Enum.PartType.Cylinder
                                     stick.CanCollide = false
                                     stick.Name = "Stick"
-                                    stick.CFrame = CFrame.new(worldX, sy + 0.1, worldZ) * CFrame.Angles(0, 0, math.rad(math.random(-30, 30)))
+                                    stick.CFrame = CFrame.new(worldX, sy + 0.3, worldZ) * CFrame.Angles(0, 0, math.rad(math.random(-30, 30)))
                                     stick.Parent = workspace
                                     StickCount += 1
                                 end
