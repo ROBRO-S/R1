@@ -36,14 +36,32 @@ local function fallback()
 		},
 		-- Клетка сетки занятости. В неё нельзя поставить второй объект.
 		occupancy_cell_size = 4,
-		flatten_radius = 0,
+		-- Основание MegaTree. Площадка и проверка уклона считаются от этого радиуса.
+		tree_base_radius = 18,
+		-- Градусы. Круче — под деревом режется круглая площадка.
+		-- 6° ловит уступ вокселя под широким основанием.
+		max_slope_for_tree = 6,
+		-- Градусы. Круче — под камнем выравнивается пятачок, чтобы он не висел над ямой.
+		max_slope_for_prop = 8,
+		-- Внешний радиус выравнивания. Внутренние flatten_flat_fraction — ровная земля.
+		flatten_radius = 36,
+		flatten_flat_fraction = 0.5,
+		-- Зазор между основаниями любых объектов.
+		exclusion_radius = 4,
+		-- На сколько студов искать свободную точку, если место занято.
+		spawn_search_radius = 40,
 		near_water_radius_thin = 1.5,
 		near_water_radius_mega = 3,
+		-- Больше нуля — на чанк гарантируется минимум прудов.
+		pond_density = 1,
+		min_pond_size = 16,
+		min_ponds_per_chunk = 1,
 		terrain = {
-			noise_scale_1 = 0.008,
-			noise_scale_2 = 0.03,
-			noise_amplitude_1 = 15,
-			noise_amplitude_2 = 5,
+			noise_scale_1 = 0.0035,
+			noise_scale_2 = 0.012,
+			-- Невысокие волны. Большие амплитуды дают горы, на которых объекты висят.
+			noise_amplitude_1 = 5,
+			noise_amplitude_2 = 1.2,
 			noise_seed_y = 0,
 			noise_offset_2 = 100,
 			sand_min_x = 600,
@@ -52,9 +70,14 @@ local function fallback()
 			rock_level = 22,
 			bottom_y = -50,
 			-- Насколько яма глубже обода, чтобы стать прудом. Больше — меньше и мельче.
-			pond_depth = 2.4,
-			-- На каком расстоянии мерить обод. Меньше — пруды уже.
-			pond_rim = 8,
+			pond_depth = 1.6,
+			-- На каком расстоянии мерить обод. Слишком маленький радиус на плавном шуме даёт 0 прудов.
+			pond_rim = 16,
+			-- Насколько зеркало ниже самой низкой точки берега.
+			pond_shore = 0.5,
+			-- Минимальная толщина воды. Раньше вместо неё было жёсткое «не меньше 1 студа».
+			pond_min_fill = 0.6,
+			pond_place_attempts = 12,
 			progress_every = 5000,
 		},
 		props = {
@@ -130,9 +153,14 @@ end
 local function describe(cfg)
 	local probs = cfg.probabilities or {}
 	return string.format(
-		"вода %.2f | берег %.2f | шансы thin %.4f mega %.4f stick %.4f rock %.4f boulder %.4f",
+		"вода %.2f | берег %.2f | пруды %.2f/чанк мин %d размер %.0f | дерево R %.0f уклон %.0f° | шансы thin %.4f mega %.4f stick %.4f rock %.4f boulder %.4f",
 		tonumber(cfg.water_world_y) or -1,
 		tonumber(cfg.pond_level) or -1,
+		tonumber(cfg.pond_density) or -1,
+		tonumber(cfg.min_ponds_per_chunk) or -1,
+		tonumber(cfg.min_pond_size) or -1,
+		tonumber(cfg.tree_base_radius) or -1,
+		tonumber(cfg.max_slope_for_tree) or -1,
 		tonumber(probs.thin_tree) or -1,
 		tonumber(probs.mega_tree) or -1,
 		tonumber(probs.stick) or -1,

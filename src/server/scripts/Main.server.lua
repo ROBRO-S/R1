@@ -9,14 +9,16 @@ local function configStamp(cfg)
     local probs = cfg.probabilities
     local props = cfg.props
     return string.format(
-        "pond5|%.4f|%.4f|%.4f|%.4f|%.4f|%.3f|%.3f|%.2f|%.2f|%.2f|%.2f|%.2f|%.2f|%.2f|%.2f|%.1f",
+        "flat1|%.4f|%.4f|%.4f|%.4f|%.4f|%.2f|%.2f|%.1f|%.1f|%.0f|%.1f|%.2f|%.1f|%.2f|%.1f|%.0f|%.2f|%.1f|%.2f|%.2f|%.1f|%.1f|%.4f|%.4f",
         probs.thin_tree, probs.mega_tree, probs.stick, probs.small_rock, probs.boulder,
         cfg.water_world_y, cfg.pond_level,
-        props.thin_tree_radius, props.mega_tree_radius,
-        props.small_rock_radius, props.boulder_radius,
-        cfg.near_water_radius_thin, cfg.near_water_radius_mega,
         props.mega_tree_scale,
-        cfg.terrain.pond_depth, cfg.terrain.pond_rim
+        cfg.tree_base_radius, cfg.max_slope_for_tree, cfg.flatten_radius,
+        cfg.flatten_flat_fraction, cfg.exclusion_radius,
+        cfg.pond_density, cfg.min_pond_size, cfg.min_ponds_per_chunk,
+        cfg.terrain.pond_depth, cfg.terrain.pond_rim, cfg.terrain.pond_shore, cfg.terrain.pond_min_fill,
+        cfg.terrain.noise_amplitude_1, cfg.terrain.noise_amplitude_2,
+        cfg.terrain.noise_scale_1, cfg.terrain.noise_scale_2
     )
 end
 

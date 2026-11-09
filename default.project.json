@@ -1,13 +1,24 @@
 {
   "name": "R1 Project",
+  "syncRules": [
+    {
+      "pattern": "**/biome_config.json",
+      "use": "text",
+      "suffix": ".json"
+    }
+  ],
   "tree": {
     "$className": "DataModel",
-    
+
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
-      
+
       "assets": {
         "$path": "src/assets"
+      },
+
+      "biome_config": {
+        "$path": "src/biome_config.json"
       }
     },
 
@@ -15,11 +26,15 @@
       "TerrainGenerator": {
         "$path": "src/server/TerrainGenerator.module.luau"
       },
-      
+
       "ObjectGenerator": {
         "$path": "src/server/ObjectGenerator.module.luau"
       },
-      
+
+      "ConfigLoader": {
+        "$path": "src/server/scripts/ConfigLoader.module.luau"
+      },
+
       "Main": {
         "$path": "src/server/scripts/Main.server.lua"
       }

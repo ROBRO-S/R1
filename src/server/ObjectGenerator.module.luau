@@ -13,15 +13,40 @@ function ObjectGenerator.Generate()
     local ChunkSize = cfg.chunk_size
     local VoxelRes = cfg.voxel_res
     local occupancyCell = cfg.occupancy_cell_size
+    local treeBaseRadius = cfg.tree_base_radius
+    local maxSlopeTree = cfg.max_slope_for_tree
+    local maxSlopeProp = cfg.max_slope_for_prop
     local flattenRadius = cfg.flatten_radius
+    local flatFraction = cfg.flatten_flat_fraction
+    local exclusionRadius = cfg.exclusion_radius
+    local spawnSearchRadius = cfg.spawn_search_radius
     local nearWaterThin = cfg.near_water_radius_thin
     local nearWaterMega = cfg.near_water_radius_mega
 
-    if occupancyCell <= 0 or flattenRadius < 0 or nearWaterThin < 0 or nearWaterMega < 0 then
-        warn("⚠️ Некорректные occupancy/flatten/near_water в biome_config")
-    end
     if occupancyCell <= 0 then
+        warn("⚠️ occupancy_cell_size должен быть больше 0. Беру voxel_res.")
         occupancyCell = VoxelRes
+    end
+    if flatFraction <= 0.05 or flatFraction >= 1 then
+        warn("⚠️ flatten_flat_fraction должен быть между 0 и 1. Беру 0.5.")
+        flatFraction = 0.5
+    end
+    if exclusionRadius < 0 or flattenRadius < 0 or treeBaseRadius <= 0 then
+        warn("⚠️ Некорректные tree_base_radius / flatten_radius / exclusion_radius в biome_config.")
+    end
+    if exclusionRadius < 0 then
+        exclusionRadius = 0
+    end
+
+    local function slopeLimit(mode)
+        if mode == "level" then
+            return maxSlopeTree
+        end
+        return maxSlopeProp
+    end
+
+    local function canLevel(mode)
+        return mode == "level" or mode == "pad"
     end
 
     -- Вода и скала сюда не входят: на них объекты не ставятся.
@@ -81,6 +106,11 @@ function ObjectGenerator.Generate()
         end)
     end
 
+    -- Половина зазора с каждой стороны: вместе выходит exclusion_radius между основаниями.
+    local function claimRadius(radius)
+        return radius + exclusionRadius * 0.5
+    end
+
     local waterPlane = cfg.water_world_y
 
     -- Луч часто пролетает воду и бьёт в дно. Дно ниже зеркала и воксель с водой — это пруд.
@@ -115,32 +145,32 @@ function ObjectGenerator.Generate()
         return false
     end
 
-    -- Суша только под основанием. Радиус кроны занятость не путает с проверкой воды.
-    local function usableGround(x, z, occupyRadius, waterRadius)
-        if not areaFree(x, z, occupyRadius) then
-            return nil
+    local function slopeDegrees(normal)
+        return math.deg(math.acos(math.clamp(normal.Y, -1, 1)))
+    end
+
+    -- mode "level": крутой уклон не запрещает спавн, его потом срезает площадка.
+    local function inspectGround(x, z, sampleRadius, mode)
+        local radius = sampleRadius
+        if radius < 1 then
+            radius = 1
         end
-        local foot = waterRadius or 0
-        if foot <= 0 then
-            foot = math.min(occupyRadius or 1, 2)
+        local offsets = { { 0, 0 } }
+        local spokes = 8
+        for index = 1, spokes do
+            local angle = (index / spokes) * math.pi * 2
+            offsets[#offsets + 1] = { math.cos(angle) * radius, math.sin(angle) * radius }
         end
-        if foot > 3 then
-            foot = 3
-        end
-        if foot < 1 then
-            foot = 1
-        end
-        local offsets = {
-            { 0, 0 },
-            { foot, 0 },
-            { -foot, 0 },
-            { 0, foot },
-            { 0, -foot },
-        }
+
         local center = nil
+        local ringSum, ringCount = 0, 0
+        local minY, maxY = math.huge, -math.huge
+        local steep = false
+        local limit = slopeLimit(mode)
+
         for index, off in offsets do
             local hit = groundHit(x + off[1], z + off[2])
-            if not hit or hit.Normal.Y < 0.45 then
+            if not hit or hit.Normal.Y <= 0 then
                 return nil
             end
             if hit.Material == Enum.Material.Water or not ALLOWED[hit.Material] then
@@ -149,11 +179,99 @@ function ObjectGenerator.Generate()
             if pointIsWet(x + off[1], z + off[2], hit.Position.Y) then
                 return nil
             end
+            if slopeDegrees(hit.Normal) > limit then
+                if not canLevel(mode) then
+                    return nil
+                end
+                steep = true
+            end
             if index == 1 then
                 center = hit
+            else
+                ringSum += hit.Position.Y
+                ringCount += 1
+            end
+            minY = math.min(minY, hit.Position.Y)
+            maxY = math.max(maxY, hit.Position.Y)
+        end
+
+        -- Кольцо проб — это диаметр основания, поэтому допуск уклона тоже на весь диаметр.
+        local allowedDrop = 2 * radius * math.tan(math.rad(limit))
+        if maxY - minY > allowedDrop then
+            if not canLevel(mode) then
+                return nil
+            end
+            steep = true
+        end
+
+        local padY = center.Position.Y
+        if ringCount > 0 then
+            -- Средняя высота кромки основания, а не вершина холма в центре луча.
+            padY = ringSum / ringCount
+        end
+
+        return {
+            hit = center,
+            steep = steep,
+            padY = padY,
+            material = center.Material,
+        }
+    end
+
+    local halfMap = MapSize / 2
+
+    local function inMap(x, z, radius)
+        return x - radius > -halfMap and x + radius < halfMap
+            and z - radius > -halfMap and z + radius < halfMap
+    end
+
+    local function seek(x, z, occupyRadius, sampleRadius, mode)
+        local padded = claimRadius(occupyRadius)
+
+        local function accept(px, pz)
+            if not inMap(px, pz, occupyRadius) then
+                return nil, "bounds"
+            end
+            if not areaFree(px, pz, padded) then
+                return nil, "busy"
+            end
+            local info = inspectGround(px, pz, sampleRadius, mode)
+            if not info then
+                return nil, "ground"
+            end
+            return info, nil
+        end
+
+        local info, reason = accept(x, z)
+        if info then
+            return { x = x, z = z, info = info, moved = false }
+        end
+        if reason ~= "busy" or spawnSearchRadius <= 0 then
+            return nil
+        end
+
+        local step = math.max(occupancyCell, 1)
+        for dist = step, spawnSearchRadius, step do
+            local turns = math.floor((2 * math.pi * dist) / step)
+            if turns < 8 then
+                turns = 8
+            end
+            if turns > 24 then
+                turns = 24
+            end
+            local spin = math.random() * math.pi * 2
+            for turn = 1, turns do
+                local angle = spin + (turn / turns) * math.pi * 2
+                local px = x + math.cos(angle) * dist
+                local pz = z + math.sin(angle) * dist
+                local nearby = accept(px, pz)
+                if nearby then
+                    return { x = px, z = pz, info = nearby, moved = true }
+                end
             end
         end
-        return center
+
+        return nil
     end
 
     local function opaqueParts(root)
@@ -195,9 +313,9 @@ function ObjectGenerator.Generate()
         return minX, minY, minZ, maxX, maxY, maxZ
     end
 
-    -- Сажает самую нижнюю точку сетки на луч. Центр кроны для этого не используется:
-    -- иначе ствол уезжает в сторону и оказывается в воде или над пустотой.
-    local function seatInstance(inst, x, z, rot, groundY)
+    -- Сажает самую нижнюю точку сетки на площадку.
+    -- lockXZ держит ствол в центре выровненного круга, а не на исходном пике.
+    local function seatInstance(inst, x, z, rot, groundY, lockXZ)
         local placed = CFrame.new(x, groundY, z) * rot
         if inst:IsA("Model") then
             inst:PivotTo(placed)
@@ -205,7 +323,8 @@ function ObjectGenerator.Generate()
             if #parts == 0 then
                 return false
             end
-            local baseX, baseZ, minY = nil, nil, math.huge
+            local minY, maxY = math.huge, -math.huge
+            local corners = {}
             for _, part in parts do
                 local hx = part.Size.X * 0.5
                 local hy = part.Size.Y * 0.5
@@ -215,12 +334,34 @@ function ObjectGenerator.Generate()
                     for _, sy in { -hy, hy } do
                         for _, sz in { -hz, hz } do
                             local point = cf:PointToWorldSpace(Vector3.new(sx, sy, sz))
-                            if point.Y < minY then
-                                minY = point.Y
-                                baseX = point.X
-                                baseZ = point.Z
-                            end
+                            corners[#corners + 1] = point
+                            minY = math.min(minY, point.Y)
+                            maxY = math.max(maxY, point.Y)
                         end
+                    end
+                end
+            end
+            local baseX, baseZ = x, z
+            if lockXZ then
+                local band = minY + math.max((maxY - minY) * 0.2, VoxelRes)
+                local sumX, sumZ, count = 0, 0, 0
+                for _, point in corners do
+                    if point.Y <= band then
+                        sumX += point.X
+                        sumZ += point.Z
+                        count += 1
+                    end
+                end
+                if count > 0 then
+                    baseX = sumX / count
+                    baseZ = sumZ / count
+                end
+            else
+                for _, point in corners do
+                    if point.Y <= minY + 0.001 then
+                        baseX = point.X
+                        baseZ = point.Z
+                        break
                     end
                 end
             end
@@ -245,15 +386,168 @@ function ObjectGenerator.Generate()
         end
     end
 
-    local function flattenUnder(x, z, groundY, material)
-        if flattenRadius <= 0 or material == Enum.Material.Water then
-            return
+    local function measuredBaseRadius(model)
+        local pivot = model:GetPivot()
+        local points = {}
+        local function push(part)
+            if not part:IsA("BasePart") or part.Transparency >= 1 then
+                return
+            end
+            local hx = part.Size.X * 0.5
+            local hy = part.Size.Y * 0.5
+            local hz = part.Size.Z * 0.5
+            local cf = part.CFrame
+            for _, sx in { -hx, hx } do
+                for _, sy in { -hy, hy } do
+                    for _, sz in { -hz, hz } do
+                        local world = cf:PointToWorldSpace(Vector3.new(sx, sy, sz))
+                        points[#points + 1] = pivot:PointToObjectSpace(world)
+                    end
+                end
+            end
         end
+        for _, child in model:GetDescendants() do
+            push(child)
+        end
+        if #points == 0 then
+            return 0
+        end
+        local minY, maxY = math.huge, -math.huge
+        for _, point in points do
+            minY = math.min(minY, point.Y)
+            maxY = math.max(maxY, point.Y)
+        end
+        local band = minY + math.max((maxY - minY) * 0.2, VoxelRes)
+        local radius = 0
+        for _, point in points do
+            if point.Y <= band then
+                radius = math.max(radius, math.sqrt(point.X * point.X + point.Z * point.Z))
+            end
+        end
+        return radius
+    end
+
+    -- Внутренние flatten_flat_fraction радиуса — ровная земля, остаток плавно возвращается в склон.
+    local function discRadii(baseRadius, wide)
+        local outer = baseRadius / flatFraction
+        if wide then
+            outer = math.max(flattenRadius, outer)
+        end
+        return outer * flatFraction, outer
+    end
+
+    local padsLeveled = 0
+    local warnedExpand = false
+
+    local function flattenDisc(cx, cz, inner, outer, padY, material)
+        local res = VoxelRes
+        local minY, maxY = padY, padY
+        local heights = {}
+
+        local function remember(x, z, y)
+            heights[math.floor(x / res + 0.5) .. ":" .. math.floor(z / res + 0.5)] = y
+            minY = math.min(minY, y)
+            maxY = math.max(maxY, y)
+        end
+
+        for x = cx - outer, cx + outer, res do
+            for z = cz - outer, cz + outer, res do
+                local dx = x - cx
+                local dz = z - cz
+                if dx * dx + dz * dz <= (outer + res) * (outer + res) then
+                    local hit = groundHit(x, z)
+                    local inside = dx * dx + dz * dz <= inner * inner
+                    if not hit or hit.Material == Enum.Material.Water then
+                        if inside then
+                            return false
+                        end
+                    elseif not ALLOWED[hit.Material] then
+                        if inside then
+                            remember(x, z, padY)
+                        end
+                    else
+                        remember(x, z, hit.Position.Y)
+                    end
+                end
+            end
+        end
+
+        if maxY - minY < res then
+            maxY = minY + res
+        end
+
         local region = Region3.new(
-            Vector3.new(x - flattenRadius, groundY - VoxelRes, z - flattenRadius),
-            Vector3.new(x + flattenRadius, groundY, z + flattenRadius)
-        ):ExpandToGrid(VoxelRes)
-        Terrain:FillRegion(region, VoxelRes, material)
+            Vector3.new(cx - outer, minY - res * 2, cz - outer),
+            Vector3.new(cx + outer, maxY + res * 2, cz + outer)
+        ):ExpandToGrid(res)
+        local materials, occupancy = Terrain:ReadVoxels(region, res)
+        if not materials or not materials[1] or not materials[1][1] or not occupancy then
+            return false
+        end
+
+        local rMin = region.CFrame.Position - (region.Size / 2)
+        local sizeX, sizeY, sizeZ = #materials, #materials[1], #materials[1][1]
+
+        for xi = 1, sizeX do
+            for zi = 1, sizeZ do
+                local wx = rMin.X + (xi - 0.5) * res
+                local wz = rMin.Z + (zi - 0.5) * res
+                local dx = wx - cx
+                local dz = wz - cz
+                local dist = math.sqrt(dx * dx + dz * dz)
+                if dist <= outer then
+                    local oldY = heights[math.floor(wx / res + 0.5) .. ":" .. math.floor(wz / res + 0.5)]
+                    if not oldY then
+                        local hit = groundHit(wx, wz)
+                        oldY = hit and hit.Position.Y or padY
+                    end
+                    local newY = padY
+                    if dist > inner and outer > inner + 0.001 then
+                        local u = (dist - inner) / (outer - inner)
+                        local smooth = u * u * (3 - 2 * u)
+                        newY = padY + (oldY - padY) * smooth
+                    end
+                    local solidTop = math.clamp(math.floor((newY - rMin.Y - 0.001) / res) + 1, 1, sizeY)
+                    local clearTop = math.clamp(math.floor((math.max(oldY, newY) - rMin.Y - 0.001) / res) + 1, 1, sizeY)
+                    for yi = 1, sizeY do
+                        if yi < solidTop then
+                            local mat = materials[xi][yi][zi]
+                            if mat == Enum.Material.Air or mat == Enum.Material.Water then
+                                materials[xi][yi][zi] = material
+                                occupancy[xi][yi][zi] = 1
+                            end
+                        elseif yi == solidTop then
+                            materials[xi][yi][zi] = material
+                            occupancy[xi][yi][zi] = 1
+                        elseif yi <= clearTop then
+                            materials[xi][yi][zi] = Enum.Material.Air
+                            occupancy[xi][yi][zi] = 0
+                        end
+                    end
+                end
+            end
+        end
+
+        local ok, err = pcall(function()
+            Terrain:WriteVoxels(region, res, materials, occupancy)
+        end)
+        if not ok then
+            warn("⚠️ Не удалось выровнять площадку: " .. tostring(err))
+            return false
+        end
+        padsLeveled += 1
+        if padsLeveled % 5 == 0 then
+            wait()
+        end
+        return true
+    end
+
+    local function anchorY(x, z, padY)
+        local hit = groundHit(x, z)
+        if hit and hit.Material ~= Enum.Material.Water and math.abs(hit.Position.Y - padY) <= VoxelRes * 1.5 then
+            return hit.Position.Y
+        end
+        return padY
     end
 
     -- Ищем шаблоны
@@ -267,31 +561,34 @@ function ObjectGenerator.Generate()
         warn("⚠️ НЕ НАШЕЛ BigTree В assets!")
         return
     end
+    if not MegaTreeTemplate then
+        warn("⚠️ НЕ НАШЕЛ MegaTree В assets!")
+    end
 
     local stickColor = colorFrom(props.stick_color)
     local smallRockColor = colorFrom(props.small_rock_color)
     local boulderColor = colorFrom(props.boulder_color)
     local besideSize = props.stick_beside_size
     local looseStickSize = props.stick_size
+    local scaleWarned = false
+    local measureWarned = false
+    local maxMeasured = 0
 
     local function scaleModel(model, scale)
         if scale == 1 or not model:IsA("Model") then
             return
         end
-        -- UnionOperation (камни) сюда не попадают: ScaleTo только у Model.
-        pcall(function()
-            model:ScaleTo(Vector3.new(scale, scale, scale))
+        local ok, err = pcall(function()
+            model:ScaleTo(scale)
         end)
+        if not ok and not scaleWarned then
+            scaleWarned = true
+            warn("⚠️ ScaleTo не применился: " .. tostring(err))
+        end
     end
 
-    local function spawnModel(template, scale, x, z, rot, occupyRadius, waterExtra, prepare)
+    local function placeModel(template, scale, x, z, rot, occupyRadius, sampleRadius, mode, widePad, prepare)
         if not template or not template:IsA("Model") then
-            return nil
-        end
-        -- Радиус берём из конфига, а не из кроны: иначе мега-дерево
-        -- требует пустую поляну размером с листву и не ставится вообще.
-        local hit = usableGround(x, z, occupyRadius, waterExtra or 0)
-        if not hit then
             return nil
         end
 
@@ -302,45 +599,100 @@ function ObjectGenerator.Generate()
                 model.PrimaryPart = part
             end
         end
+        scaleModel(model, scale)
         if prepare then
             prepare(model)
         end
-        scaleModel(model, scale)
+
+        local footprint = occupyRadius
+        local groundRadius = sampleRadius
+        if widePad then
+            local measured = measuredBaseRadius(model)
+            if measured > maxMeasured then
+                maxMeasured = measured
+            end
+            local padCap = math.max(treeBaseRadius, flattenRadius * flatFraction)
+            if measured > padCap then
+                if not measureWarned then
+                    measureWarned = true
+                    print(string.format(
+                        "Основание MegaTree по мешу %.0f ст. Площадка ограничена tree_base_radius / flatten_radius (%.0f).",
+                        measured, padCap
+                    ))
+                end
+                measured = padCap
+            end
+            footprint = math.max(footprint, treeBaseRadius, measured)
+            groundRadius = math.max(groundRadius, footprint)
+        end
+
+        local spot = seek(x, z, footprint, groundRadius, mode)
+        if not spot then
+            model:Destroy()
+            return nil
+        end
+
+        local groundY = spot.info.hit.Position.Y
+        if canLevel(mode) and spot.info.steep then
+            local inner, outer = discRadii(groundRadius, widePad)
+            if widePad and outer > flattenRadius + 0.01 and not warnedExpand then
+                warnedExpand = true
+                print(string.format(
+                    "Площадка расширена до %.0f: основание %.0f не влезает в flatten_radius %.0f.",
+                    outer, groundRadius, flattenRadius
+                ))
+            end
+            if not flattenDisc(spot.x, spot.z, inner, outer, spot.info.padY, spot.info.material) then
+                model:Destroy()
+                return nil
+            end
+            groundY = anchorY(spot.x, spot.z, spot.info.padY)
+        end
+
         model.Parent = workspace
-        if not seatInstance(model, x, z, rot, hit.Position.Y) then
+        if not seatInstance(model, spot.x, spot.z, rot, groundY, mode == "level") then
             model:Destroy()
             return nil
         end
         anchorAll(model)
-        claim(x, z, occupyRadius)
-        flattenUnder(x, z, hit.Position.Y, hit.Material)
-        return model, occupyRadius
+        claim(spot.x, spot.z, claimRadius(footprint))
+        return model, footprint, spot.x, spot.z, spot.moved
     end
 
     local function spawnPart(template, x, z, rot, color, occupyRadius)
         if not template or not template:IsA("BasePart") then
             return nil
         end
-        local hit = usableGround(x, z, occupyRadius, math.min(occupyRadius, 3))
-        if not hit then
+        local visual = math.max(template.Size.X, template.Size.Z) * 0.5
+        local footprint = math.max(occupyRadius, visual)
+        local spot = seek(x, z, footprint, math.max(footprint, 1), "pad")
+        if not spot then
             return nil
+        end
+
+        local groundY = spot.info.hit.Position.Y
+        if spot.info.steep then
+            local inner, outer = discRadii(footprint, false)
+            if not flattenDisc(spot.x, spot.z, inner, outer, spot.info.padY, spot.info.material) then
+                return nil
+            end
+            groundY = anchorY(spot.x, spot.z, spot.info.padY)
         end
 
         local part = template:Clone()
         part.Color = color
         part.Transparency = props.rock_transparency
         part.Parent = workspace
-        if not seatInstance(part, x, z, rot, hit.Position.Y) then
+        if not seatInstance(part, spot.x, spot.z, rot, groundY, false) then
             part:Destroy()
             return nil
         end
         anchorAll(part)
-        claim(x, z, occupyRadius)
-        flattenUnder(x, z, hit.Position.Y, hit.Material)
-        return part
+        claim(spot.x, spot.z, claimRadius(footprint))
+        return part, spot.moved
     end
 
-    local function makeStick(x, z, size, tilt, hit, radius)
+    local function makeStick(x, z, size, tilt, groundY, radius)
         local stick = Instance.new("Part")
         stick.Name = "Stick"
         stick.Size = Vector3.new(size[1], size[2], size[3])
@@ -349,12 +701,12 @@ function ObjectGenerator.Generate()
         stick.CanCollide = false
         stick.Parent = workspace
         local rot = CFrame.Angles(0, 0, math.rad(math.random(-tilt, tilt)))
-        if not seatInstance(stick, x, z, rot, hit.Position.Y) then
+        if not seatInstance(stick, x, z, rot, groundY, false) then
             stick:Destroy()
             return false
         end
         anchorAll(stick)
-        claim(x, z, radius)
+        claim(x, z, claimRadius(radius))
         return true
     end
 
@@ -363,7 +715,7 @@ function ObjectGenerator.Generate()
             return false
         end
         local stickRadius = math.max(besideSize[1], besideSize[3]) * 0.5
-        local minDist = math.max(props.stick_beside_dist_min, treeRadius + stickRadius + 1)
+        local minDist = math.max(props.stick_beside_dist_min, treeRadius + stickRadius + exclusionRadius)
         local maxDist = math.max(props.stick_beside_dist_max, minDist)
         for _ = 1, 6 do
             local angle = math.random() * math.pi * 2
@@ -373,8 +725,8 @@ function ObjectGenerator.Generate()
             end
             local sx = x + math.cos(angle) * dist
             local sz = z + math.sin(angle) * dist
-            local hit = usableGround(sx, sz, stickRadius, stickRadius)
-            if hit and makeStick(sx, sz, besideSize, props.stick_beside_tilt, hit, stickRadius) then
+            local spot = seek(sx, sz, stickRadius, math.max(stickRadius, 1), "strict")
+            if spot and makeStick(spot.x, spot.z, besideSize, props.stick_beside_tilt, spot.info.hit.Position.Y, stickRadius) then
                 return true
             end
         end
@@ -408,12 +760,24 @@ function ObjectGenerator.Generate()
         cfg.probabilities.boulder
     ))
     print(string.format(
-        "Занятость: %.0f | выравнивание: %.0f | у воды тонкие/мега: %.0f / %.0f",
-        occupancyCell, flattenRadius, nearWaterThin, nearWaterMega
+        "Основание %.0f | уклон дерева %.0f° | площадка %.0f (ровных %.0f%%) | зазор %.0f | поиск %.0f",
+        treeBaseRadius,
+        maxSlopeTree,
+        flattenRadius,
+        flatFraction * 100,
+        exclusionRadius,
+        spawnSearchRadius
     ))
     local startTime = tick()
     local ThinTreeCount, MegaTreeCount, StickCount = 0, 0, 0
     local RockCount, BoulderCount = 0, 0
+    local movedCount = 0
+
+    local function noteMove(moved)
+        if moved then
+            movedCount += 1
+        end
+    end
 
     -- Раньше цикл кончался на MapSize/2 - ChunkSize.
     -- 2000 не делится на 256, поэтому полоса около 208 студов (примерно 1/10 карты) оставалась пустой.
@@ -457,52 +821,62 @@ function ObjectGenerator.Generate()
 
                             -- 1. ТОНКИЕ ДЕРЕВЬЯ. Порог = вероятность thin_tree.
                             if rand < spawn.thin_tree then
-                                local _, radius = spawnModel(
+                                local _, radius, px, pz, moved = placeModel(
                                     ThinTreeTemplate,
                                     props.thin_tree_scale,
                                     worldX,
                                     worldZ,
                                     CFrame.new(),
                                     thinRadius,
-                                    nearWaterThin
+                                    math.max(nearWaterThin, thinRadius),
+                                    "level",
+                                    false,
+                                    nil
                                 )
                                 if radius then
                                     ThinTreeCount += 1
-                                    if placeBesideStick(worldX, worldZ, radius) then
+                                    noteMove(moved)
+                                    if placeBesideStick(px, pz, radius) then
                                         StickCount += 1
                                     end
                                 end
 
                             -- 2. МЕГА-ДЕРЕВЬЯ. Порог строго выше порога тонких деревьев.
                             elseif rand < spawn.mega_tree then
-                                local _, radius = spawnModel(
+                                local _, radius, _, _, moved = placeModel(
                                     MegaTreeTemplate,
                                     props.mega_tree_scale,
                                     worldX,
                                     worldZ,
                                     CFrame.new(),
                                     megaRadius,
-                                    nearWaterMega,
+                                    math.max(nearWaterMega, treeBaseRadius),
+                                    "level",
+                                    true,
                                     prepareMega
                                 )
                                 if radius then
                                     MegaTreeCount += 1
+                                    noteMove(moved)
                                 end
 
                             -- 3. ОТДЕЛЬНЫЕ ВЕТКИ. Порог строго выше мега-деревьев.
                             elseif rand < spawn.stick then
                                 local stickRadius = math.max(looseStickSize[1], looseStickSize[3]) * 0.5
-                                local hit = usableGround(worldX, worldZ, stickRadius, stickRadius)
-                                if hit and makeStick(worldX, worldZ, looseStickSize, props.stick_tilt, hit, stickRadius) then
+                                local spot = seek(worldX, worldZ, stickRadius, math.max(stickRadius, 1), "strict")
+                                if spot and makeStick(spot.x, spot.z, looseStickSize, props.stick_tilt, spot.info.hit.Position.Y, stickRadius) then
                                     StickCount += 1
+                                    noteMove(spot.moved)
                                 end
 
                             -- 4. МЕЛКИЕ КАМНИ. Порог строго выше веток.
                             -- SmallRock — UnionOperation, ScaleTo к нему не применяется.
                             elseif rand < spawn.small_rock then
                                 local rot = CFrame.Angles(0, math.random() * math.pi * 2, 0)
-                                if spawnPart(SmallRockTemplate, worldX, worldZ, rot, smallRockColor, smallRockRadius) then
+                                local part, moved = spawnPart(SmallRockTemplate, worldX, worldZ, rot, smallRockColor, smallRockRadius)
+                                if part then
                                     RockCount += 1
+                                    noteMove(moved)
                                 end
 
                             -- 5. ВАЛУНЫ. Порог строго выше мелких камней.
@@ -511,8 +885,10 @@ function ObjectGenerator.Generate()
                                 local rotX = math.rad(math.random(-props.boulder_tilt, props.boulder_tilt))
                                 local rotY = math.random() * math.pi * 2
                                 local rot = CFrame.Angles(rotX, rotY, 0)
-                                if spawnPart(MediumRockTemplate, worldX, worldZ, rot, boulderColor, boulderRadius) then
+                                local part, moved = spawnPart(MediumRockTemplate, worldX, worldZ, rot, boulderColor, boulderRadius)
+                                if part then
                                     BoulderCount += 1
+                                    noteMove(moved)
                                 end
                             end
                         end
@@ -534,6 +910,8 @@ function ObjectGenerator.Generate()
     print("✅ ВСЁ ГОТОВО!")
     print(string.format(" Время: %.2f сек | 🌱 Деревья: %d | 🌳 Мега: %d | Ветки: %d | 🪨 Камни: %d | Валуны: %d",
         tick() - startTime, ThinTreeCount, MegaTreeCount, StickCount, RockCount, BoulderCount))
+    print(string.format(" Площадок под деревья: %d | сдвинуто из занятой точки: %d | основание меша до %.0f",
+        padsLeveled, movedCount, maxMeasured))
 end
 
 return ObjectGenerator
