@@ -715,7 +715,13 @@ function ObjectGenerator.Generate()
         stick.Shape = Enum.PartType.Cylinder
         stick.CanCollide = false
         stick.Parent = workspace
-        local rot = CFrame.Angles(0, 0, math.rad(math.random(-tilt, tilt)))
+        -- Цилиндр вдоль X уже лежит плашмя. Крутим только по Y; tilt=0 — без задранного края.
+        local yaw = math.random() * math.pi * 2
+        local roll = 0
+        if type(tilt) == "number" and tilt > 0 then
+            roll = math.rad(math.random(-tilt, tilt))
+        end
+        local rot = CFrame.Angles(0, yaw, roll)
         if not seatInstance(stick, x, z, rot, groundY, false) then
             stick:Destroy()
             return false
@@ -749,14 +755,16 @@ function ObjectGenerator.Generate()
     end
 
     local function prepareMega(model)
-        -- Видимые части непрозрачные; Soil только якорь посадки.
+        -- Непрозрачные и с коллизией (раньше CanCollide=false для отладки прохода).
         for _, child in model:GetDescendants() do
             if child:IsA("BasePart") then
                 child.Transparency = 0
+                child.CanCollide = true
             end
         end
         if model:IsA("BasePart") then
             model.Transparency = 0
+            model.CanCollide = true
         end
 
         local soil = Instance.new("Part")

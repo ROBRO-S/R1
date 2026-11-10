@@ -102,7 +102,7 @@ local function fallback()
 			stick_beside_dist_max = 4,
 			stick_beside_size = { 0.8, 0.2, 0.2 },
 			stick_beside_lift = 0.1,
-			stick_beside_tilt = 25,
+			stick_beside_tilt = 0,
 			stick_color = { 120, 80, 40 },
 			mega_tree_scale = 1,
 			-- Отрицательное — утопить ствол, чтобы корни не торчали.
@@ -111,7 +111,7 @@ local function fallback()
 			soil_transparency = 1,
 			stick_size = { 2.4, 0.6, 0.6 },
 			stick_lift = 0.3,
-			stick_tilt = 30,
+			stick_tilt = 0,
 			ground_ray_up = 50,
 			ground_ray_down = 100,
 			small_rock_color = { 100, 100, 100 },

@@ -10,7 +10,7 @@ local function configStamp(cfg)
     local probs = cfg.probabilities
     local props = cfg.props
     return string.format(
-        "grass5|%.4f|%.4f|%.4f|%.4f|%.4f|%.2f|%.2f|%.2f|%.1f|%.1f|%.0f|%.1f|%.2f|%.1f|%.2f|%.1f|%.0f|%.2f|%.1f|%.2f|%.2f|%.1f|%.1f|%.4f|%.4f|%.0f|%.2f|%.2f|%.1f",
+        "grass6|%.4f|%.4f|%.4f|%.4f|%.4f|%.2f|%.2f|%.2f|%.1f|%.1f|%.0f|%.1f|%.2f|%.1f|%.2f|%.1f|%.0f|%.2f|%.1f|%.2f|%.2f|%.1f|%.1f|%.4f|%.4f|%.0f|%.2f|%.2f|%.1f|%.0f|%.0f",
         probs.thin_tree, probs.mega_tree, probs.stick, probs.small_rock, probs.boulder,
         cfg.water_world_y, cfg.pond_level,
         props.thin_tree_scale, props.mega_tree_scale,
@@ -22,7 +22,8 @@ local function configStamp(cfg)
         cfg.terrain.noise_scale_1, cfg.terrain.noise_scale_2,
         cfg.terrain.edge_margin or 0,
         cfg.terrain.grass_coverage or 0, cfg.terrain.grass_height or 0,
-        props.mega_tree_lift or 0
+        props.mega_tree_lift or 0,
+        props.stick_tilt or 0, props.stick_beside_tilt or 0
     )
 end
 
