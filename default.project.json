@@ -23,6 +23,8 @@
     },
 
     "ServerScriptService": {
+      "$className": "ServerScriptService",
+
       "TerrainGenerator": {
         "$path": "src/server/TerrainGenerator.module.luau"
       },
@@ -41,7 +43,10 @@
     },
 
     "StarterPlayer": {
+      "$className": "StarterPlayer",
+
       "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
         "$path": "src/client"
       }
     }
