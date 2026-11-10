@@ -1,18 +1,25 @@
 --!strict
--- Хотбар + рюкзак (пустые ячейки). Клик / цифры 1–9, иконка рюкзака открывает полный инвентарь.
+-- Хотбар читает InvState с сервера (не теряет слоты при Unequip) + экипирует Tool по слоту.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui") :: PlayerGui
+local backpack = player:WaitForChild("Backpack") :: Backpack
+local invState = player:WaitForChild("InvState", 30) :: Folder?
+
+local remotes = ReplicatedStorage:WaitForChild("Remotes", 30)
+local equipRemote = if remotes then remotes:WaitForChild("EquipSlot", 30) else nil
 
 local HOTBAR_SLOTS = 9
 local TOTAL_SLOTS = 20
 local SLOT_SIZE = 52
 local SLOT_GAP = 6
 local GRID_COLS = 5
+local ATTR_SLOT = "InvSlot"
 
 local PAPER = Color3.fromRGB(232, 220, 196)
 local PAPER_DARK = Color3.fromRGB(198, 178, 142)
@@ -22,8 +29,9 @@ local SELECTED = Color3.fromRGB(255, 236, 170)
 local selectedSlot = 1
 local backpackOpen = false
 
--- Несколько кнопок на один слот (хотбар + сетка рюкзака).
 local slotButtons: { [number]: { TextButton } } = {}
+local slotItems: { [number]: TextLabel } = {}
+local slotItemIds: { [number]: string } = {}
 local backpackFrame: Frame
 local backpackButton: TextButton
 
@@ -44,6 +52,16 @@ local function makeStroke(parent: Instance, color: Color3, thickness: number)
 	stroke.Parent = parent
 end
 
+local function displayName(itemId: string): string
+	if itemId == "FistWeapon" then
+		return "Fists"
+	end
+	if #itemId <= 8 then
+		return itemId
+	end
+	return string.sub(itemId, 1, 7) .. "…"
+end
+
 local function styleSlot(button: TextButton, index: number)
 	local selected = index == selectedSlot
 	button.BackgroundColor3 = if selected then SELECTED else PAPER
@@ -62,12 +80,104 @@ local function refreshSelection()
 	end
 end
 
+local function refreshSlotLabels()
+	for index = 1, TOTAL_SLOTS do
+		local label = slotItems[index]
+		local itemId = slotItemIds[index]
+		if label then
+			label.Text = if itemId then displayName(itemId) else ""
+		end
+	end
+end
+
+local function findToolForSlot(slot: number): Tool?
+	local function scan(container: Instance?): Tool?
+		if not container then
+			return nil
+		end
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("Tool") and child:GetAttribute(ATTR_SLOT) == slot then
+				return child
+			end
+		end
+		return nil
+	end
+	local tool = scan(backpack) or scan(player.Character)
+	if tool then
+		return tool
+	end
+	-- Фоллбек: FistWeapon без атрибута → слот 1.
+	if slot == 1 then
+		local function byName(container: Instance?): Tool?
+			if not container then
+				return nil
+			end
+			local t = container:FindFirstChild("FistWeapon")
+			if t and t:IsA("Tool") then
+				return t
+			end
+			return nil
+		end
+		return byName(backpack) or byName(player.Character)
+	end
+	return nil
+end
+
+local function syncFromInvState()
+	table.clear(slotItemIds)
+	if invState then
+		for _, child in ipairs(invState:GetChildren()) do
+			if child:IsA("StringValue") then
+				local slot = tonumber(string.match(child.Name, "^Slot(%d+)$"))
+				if slot and slot >= 1 and slot <= TOTAL_SLOTS and child.Value ~= "" then
+					slotItemIds[slot] = child.Value
+				end
+			end
+		end
+		local equipped = invState:FindFirstChild("Equipped")
+		if equipped and equipped:IsA("IntValue") and equipped.Value > 0 then
+			selectedSlot = equipped.Value
+		end
+	else
+		-- Пока сервер не создал InvState — хотя бы покажем Tool в руках/рюкзаке.
+		local tool = findToolForSlot(1)
+		if tool then
+			slotItemIds[1] = "FistWeapon"
+		end
+	end
+	refreshSlotLabels()
+	refreshSelection()
+end
+
 local function selectSlot(index: number)
 	if index < 1 or index > TOTAL_SLOTS then
 		return
 	end
 	selectedSlot = index
 	refreshSelection()
+
+	-- Экип только через сервер — клиентский EquipTool после Unequip часто молчит.
+	if equipRemote and equipRemote:IsA("RemoteEvent") then
+		local itemId = slotItemIds[index]
+		equipRemote:FireServer(if itemId then index else 0)
+		return
+	end
+
+	-- Фоллбек, если Remote ещё не доехал.
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local itemId = slotItemIds[index]
+	if itemId then
+		local tool = findToolForSlot(index)
+		if tool then
+			humanoid:EquipTool(tool)
+		end
+	else
+		humanoid:UnequipTools()
+	end
 end
 
 local function setBackpackOpen(open: boolean)
@@ -101,6 +211,22 @@ local function createSlot(index: number, parent: Instance, layoutOrder: number, 
 		number.TextXAlignment = Enum.TextXAlignment.Left
 		number.Text = tostring(index)
 		number.Parent = button
+	end
+
+	if not slotItems[index] then
+		local item = Instance.new("TextLabel")
+		item.Name = "Item"
+		item.BackgroundTransparency = 1
+		item.AnchorPoint = Vector2.new(0.5, 1)
+		item.Position = UDim2.new(0.5, 0, 1, -4)
+		item.Size = UDim2.new(1, -6, 0, 16)
+		item.Font = Enum.Font.GothamBold
+		item.TextSize = 11
+		item.TextColor3 = Color3.fromRGB(60, 44, 28)
+		item.TextTruncate = Enum.TextTruncate.AtEnd
+		item.Text = ""
+		item.Parent = button
+		slotItems[index] = item
 	end
 
 	button.MouseButton1Click:Connect(function()
@@ -237,4 +363,54 @@ UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: 
 	end
 end)
 
+local function hookInvState(folder: Folder)
+	invState = folder
+	folder.ChildAdded:Connect(function()
+		task.defer(syncFromInvState)
+	end)
+	folder.ChildRemoved:Connect(function()
+		task.defer(syncFromInvState)
+	end)
+	local equipped = folder:FindFirstChild("Equipped")
+	if equipped and equipped:IsA("IntValue") then
+		equipped.Changed:Connect(function()
+			syncFromInvState()
+		end)
+	end
+	for _, child in ipairs(folder:GetChildren()) do
+		if child:IsA("StringValue") then
+			child.Changed:Connect(function()
+				syncFromInvState()
+			end)
+		end
+	end
+	folder.ChildAdded:Connect(function(child)
+		if child:IsA("StringValue") then
+			child.Changed:Connect(function()
+				syncFromInvState()
+			end)
+		elseif child:IsA("IntValue") and child.Name == "Equipped" then
+			child.Changed:Connect(function()
+				syncFromInvState()
+			end)
+		end
+	end)
+	syncFromInvState()
+end
+
+if invState and invState:IsA("Folder") then
+	hookInvState(invState)
+else
+	task.spawn(function()
+		local folder = player:WaitForChild("InvState", 60)
+		if folder and folder:IsA("Folder") then
+			hookInvState(folder)
+		else
+			warn("Inventory: InvState не пришёл с сервера")
+			syncFromInvState()
+		end
+	end)
+end
+
 refreshSelection()
+syncFromInvState()

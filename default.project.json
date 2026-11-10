@@ -39,6 +39,10 @@
 
       "Main": {
         "$path": "src/server/scripts/Main.server.lua"
+      },
+
+      "FistWeapon": {
+        "$path": "src/server/scripts/FistWeapon.server.lua"
       }
     },
 
