@@ -52,9 +52,9 @@ function ObjectGenerator.Generate()
     -- Вода и скала сюда не входят: на них объекты не ставятся.
     local ALLOWED = {
         [Enum.Material.Grass] = true,
+        [Enum.Material.Ground] = true,
         [Enum.Material.Mud] = true,
         [Enum.Material.LeafyGrass] = true,
-        [Enum.Material.Sand] = true,
     }
 
     local function colorFrom(rgb)
@@ -537,7 +537,7 @@ function ObjectGenerator.Generate()
         end
         padsLeveled += 1
         if padsLeveled % 5 == 0 then
-            wait()
+            task.wait()
         end
         return true
     end
@@ -558,11 +558,16 @@ function ObjectGenerator.Generate()
     local MediumRockTemplate = assetsFolder and assetsFolder:FindFirstChild("MediumRock")
 
     if not ThinTreeTemplate then
-        warn("⚠️ НЕ НАШЕЛ BigTree В assets!")
-        return
+        warn("⚠️ НЕ НАШЕЛ BigTree В assets! Деревья/ветки у дерева пропущу.")
     end
     if not MegaTreeTemplate then
         warn("⚠️ НЕ НАШЕЛ MegaTree В assets!")
+    end
+    if not SmallRockTemplate then
+        warn("⚠️ НЕ НАШЕЛ SmallRock В assets!")
+    end
+    if not MediumRockTemplate then
+        warn("⚠️ НЕ НАШЕЛ MediumRock В assets!")
     end
 
     local stickColor = colorFrom(props.stick_color)
@@ -654,6 +659,16 @@ function ObjectGenerator.Generate()
             model:Destroy()
             return nil
         end
+        -- mega_tree_lift < 0 утапливает корни ниже поверхности.
+        local lift = 0
+        if widePad then
+            lift = props.mega_tree_lift or 0
+        else
+            lift = props.thin_tree_lift or 0
+        end
+        if lift ~= 0 then
+            model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
+        end
         anchorAll(model)
         claim(spot.x, spot.z, claimRadius(footprint))
         return model, footprint, spot.x, spot.z, spot.moved
@@ -734,6 +749,16 @@ function ObjectGenerator.Generate()
     end
 
     local function prepareMega(model)
+        -- Видимые части непрозрачные; Soil только якорь посадки.
+        for _, child in model:GetDescendants() do
+            if child:IsA("BasePart") then
+                child.Transparency = 0
+            end
+        end
+        if model:IsA("BasePart") then
+            model.Transparency = 0
+        end
+
         local soil = Instance.new("Part")
         local soilSize = props.soil_size
         soil.Name = "Soil"
@@ -821,43 +846,47 @@ function ObjectGenerator.Generate()
 
                             -- 1. ТОНКИЕ ДЕРЕВЬЯ. Порог = вероятность thin_tree.
                             if rand < spawn.thin_tree then
-                                local _, radius, px, pz, moved = placeModel(
-                                    ThinTreeTemplate,
-                                    props.thin_tree_scale,
-                                    worldX,
-                                    worldZ,
-                                    CFrame.new(),
-                                    thinRadius,
-                                    math.max(nearWaterThin, thinRadius),
-                                    "level",
-                                    false,
-                                    nil
-                                )
-                                if radius then
-                                    ThinTreeCount += 1
-                                    noteMove(moved)
-                                    if placeBesideStick(px, pz, radius) then
-                                        StickCount += 1
+                                if ThinTreeTemplate then
+                                    local _, radius, px, pz, moved = placeModel(
+                                        ThinTreeTemplate,
+                                        props.thin_tree_scale,
+                                        worldX,
+                                        worldZ,
+                                        CFrame.new(),
+                                        thinRadius,
+                                        math.max(nearWaterThin, thinRadius),
+                                        "level",
+                                        false,
+                                        nil
+                                    )
+                                    if radius then
+                                        ThinTreeCount += 1
+                                        noteMove(moved)
+                                        if placeBesideStick(px, pz, radius) then
+                                            StickCount += 1
+                                        end
                                     end
                                 end
 
                             -- 2. МЕГА-ДЕРЕВЬЯ. Порог строго выше порога тонких деревьев.
                             elseif rand < spawn.mega_tree then
-                                local _, radius, _, _, moved = placeModel(
-                                    MegaTreeTemplate,
-                                    props.mega_tree_scale,
-                                    worldX,
-                                    worldZ,
-                                    CFrame.new(),
-                                    megaRadius,
-                                    math.max(nearWaterMega, treeBaseRadius),
-                                    "level",
-                                    true,
-                                    prepareMega
-                                )
-                                if radius then
-                                    MegaTreeCount += 1
-                                    noteMove(moved)
+                                if MegaTreeTemplate then
+                                    local _, radius, _, _, moved = placeModel(
+                                        MegaTreeTemplate,
+                                        props.mega_tree_scale,
+                                        worldX,
+                                        worldZ,
+                                        CFrame.new(),
+                                        megaRadius,
+                                        math.max(nearWaterMega, treeBaseRadius),
+                                        "level",
+                                        true,
+                                        prepareMega
+                                    )
+                                    if radius then
+                                        MegaTreeCount += 1
+                                        noteMove(moved)
+                                    end
                                 end
 
                             -- 3. ОТДЕЛЬНЫЕ ВЕТКИ. Порог строго выше мега-деревьев.
@@ -896,11 +925,10 @@ function ObjectGenerator.Generate()
                 end
             end
 
-            if cursorZ == -half then
-                print(string.format("Чанк [%.0f, %.0f] | Деревья: %d Мега: %d Камни: %d Валуны: %d",
-                    cursorX, cursorZ, ThinTreeCount, MegaTreeCount, RockCount, BoulderCount))
-                wait()
-            end
+            print(string.format("Чанк [%.0f, %.0f] | Деревья: %d Мега: %d Камни: %d Валуны: %d",
+                cursorX, cursorZ, ThinTreeCount, MegaTreeCount, RockCount, BoulderCount))
+            -- Yield каждый чанк: иначе Studio убивает ObjectGen по timeout после ландшафта.
+            task.wait()
 
             cursorZ += ChunkSize
         end

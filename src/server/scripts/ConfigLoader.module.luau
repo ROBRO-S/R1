@@ -28,11 +28,11 @@ local function fallback()
 		probabilities = {
 			-- Доля клеток 4×4, не накопленный порог.
 			-- Суммы строго растут, пока каждое число больше нуля.
-			thin_tree = 0.003,
-			mega_tree = 0.003,
-			stick = 0.002,
-			small_rock = 0.002,
-			boulder = 0.003,
+			thin_tree = 0.0008,
+			mega_tree = 0.0004,
+			stick = 0.0005,
+			small_rock = 0.0005,
+			boulder = 0.0005,
 		},
 		-- Клетка сетки занятости. В неё нельзя поставить второй объект.
 		occupancy_cell_size = 4,
@@ -64,21 +64,27 @@ local function fallback()
 			noise_amplitude_2 = 1.2,
 			noise_seed_y = 0,
 			noise_offset_2 = 100,
-			sand_min_x = 600,
-			sand_min_z = 600,
 			-- Раньше скала была выше BaseHeight + 12, то есть 22.
 			rock_level = 22,
 			bottom_y = -50,
+			-- Запас за краем map_size, чтобы не было дыр и не светился Baseplate.
+			edge_margin = 128,
+			-- Доля суши с Terrain Decoration (материал Grass). Остальное — Ground без стеблей.
+			grass_coverage = 0.7,
+			-- Длина стеблей Terrain.GrassLength: 0.1 короткий … 1 длинный.
+			grass_height = 0.25,
+			-- Масштаб шума пятен травы. Меньше — крупные пятна.
+			grass_noise_scale = 0.015,
 			-- Насколько яма глубже обода, чтобы стать прудом. Больше — меньше и мельче.
 			pond_depth = 1.6,
 			-- На каком расстоянии мерить обод. Слишком маленький радиус на плавном шуме даёт 0 прудов.
 			pond_rim = 16,
 			-- Насколько зеркало ниже самой низкой точки берега.
-			pond_shore = 0.5,
+			pond_shore = 1,
 			-- Минимальная толщина воды. Раньше вместо неё было жёсткое «не меньше 1 студа».
 			pond_min_fill = 0.6,
 			pond_place_attempts = 12,
-			progress_every = 5000,
+			progress_every = 400,
 		},
 		props = {
 			ray_start_y = 200,
@@ -89,7 +95,7 @@ local function fallback()
 			mega_tree_radius = 9,
 			small_rock_radius = 1.2,
 			boulder_radius = 3.5,
-			thin_tree_scale = 0.35,
+			thin_tree_scale = 1,
 			thin_tree_lift = 0,
 			stick_beside_chance = 0.6,
 			stick_beside_dist_min = 2,
@@ -98,8 +104,9 @@ local function fallback()
 			stick_beside_lift = 0.1,
 			stick_beside_tilt = 25,
 			stick_color = { 120, 80, 40 },
-			mega_tree_scale = 2.5,
-			mega_tree_lift = 0,
+			mega_tree_scale = 1,
+			-- Отрицательное — утопить ствол, чтобы корни не торчали.
+			mega_tree_lift = -2,
 			soil_size = 1,
 			soil_transparency = 1,
 			stick_size = { 2.4, 0.6, 0.6 },

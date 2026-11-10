@@ -52,23 +52,40 @@ function TerrainGenerator.Generate()
 		return BaseHeight + noise1 + noise2
 	end
 
-	local function getMaterial(x, z, height)
-		if x > terrainCfg.sand_min_x and z > terrainCfg.sand_min_z then
-			return Enum.Material.Sand
-		end
-
-		-- Скала выше порога, остальное трава. Грязь только у настоящей ямы.
-		if height > terrainCfg.rock_level then
-			return Enum.Material.Rock
-		else
-			return Enum.Material.Grass
-		end
+	local grassCoverage = terrainCfg.grass_coverage
+	if type(grassCoverage) ~= "number" then
+		grassCoverage = 0.7
+	end
+	grassCoverage = math.clamp(grassCoverage, 0, 1)
+	local grassHeight = terrainCfg.grass_height
+	if type(grassHeight) ~= "number" then
+		grassHeight = 0.25
+	end
+	local grassNoiseScale = terrainCfg.grass_noise_scale
+	if type(grassNoiseScale) ~= "number" or grassNoiseScale <= 0 then
+		grassNoiseScale = 0.015
 	end
 
-	local function bedMaterial(x, z)
-		if x > terrainCfg.sand_min_x and z > terrainCfg.sand_min_z then
-			return Enum.Material.Sand
+	local function getMaterial(x, z, height)
+		-- Скала выше порога. Стебли Decoration только на Grass — доля grass_coverage.
+		if height > terrainCfg.rock_level then
+			return Enum.Material.Rock
 		end
+		if grassCoverage >= 1 then
+			return Enum.Material.Grass
+		end
+		if grassCoverage <= 0 then
+			return Enum.Material.Ground
+		end
+		local n = math.noise(x * grassNoiseScale, 17.3, z * grassNoiseScale)
+		local t = (n + 1) * 0.5
+		if t < grassCoverage then
+			return Enum.Material.Grass
+		end
+		return Enum.Material.Ground
+	end
+
+	local function bedMaterial(_x, _z)
 		return Enum.Material.Mud
 	end
 
@@ -110,6 +127,10 @@ function TerrainGenerator.Generate()
 		"Пруды: плотность %.2f | минимум %d на чанк | радиус воды >= %.0f",
 		PondDensity, MinPondsPerChunk, MinPondSize
 	))
+	print(string.format(
+		"Трава: покрытие %.0f%% | высота %.2f | шум %.4f",
+		grassCoverage * 100, grassHeight, grassNoiseScale
+	))
 	if WaterCap < BaseHeight then
 		print(string.format(
 			"Потолок воды %.1f ниже base_height %.1f — он больше не запрещает ямы на холмах.",
@@ -119,16 +140,27 @@ function TerrainGenerator.Generate()
 
 	-- Прошлый рельеф стираем, иначе новая вода не заменит старую землю.
 	Terrain:Clear()
+	-- Дать движку пережить Clear — иначе сразу после него легко поймать timeout.
+	task.wait()
 
 	local startTime = tick()
 	local cellsGenerated = 0
 	local waterCells = 0
-	local minCoord = -MapSize / 2
-	local maxCoord = MapSize / 2
 	local half = MapSize / 2
+	-- Игровой прямоугольник ±half; рельеф чуть шире, чтобы край и Baseplate не светились.
+	local edgeMargin = terrainCfg.edge_margin or 0
+	if edgeMargin < 0 then
+		edgeMargin = 0
+	end
+	local minCoord = -half - edgeMargin
+	local maxCoord = half + edgeMargin
 	local span = math.floor((maxCoord - minCoord) / Resolution) + 1
 	local waterMask = table.create(span * span, false)
 	local surfaceAt = {}
+	local progressEvery = terrainCfg.progress_every
+	if type(progressEvery) ~= "number" or progressEvery < 100 then
+		progressEvery = 400
+	end
 
 	local function maskIndex(x, z)
 		local ix = math.floor((x - minCoord) / Resolution + 0.5)
@@ -156,6 +188,7 @@ function TerrainGenerator.Generate()
 		if y1 - y0 < 0.05 then
 			return
 		end
+		-- FillRegion: быстрее и стабильнее на большой карте, чем сотни тысяч FillBlock.
 		local region = Region3.new(
 			Vector3.new(x, y0, z),
 			Vector3.new(x + Resolution, y1, z + Resolution)
@@ -163,6 +196,8 @@ function TerrainGenerator.Generate()
 		Terrain:FillRegion(region, Resolution, material)
 	end
 
+	-- maxCoord включительно; последняя колонка закрывает правый/дальний край.
+	local columnIndex = 0
 	for x = minCoord, maxCoord, Resolution do
 		for z = minCoord, maxCoord, Resolution do
 			local height = getHeight(x, z)
@@ -180,11 +215,39 @@ function TerrainGenerator.Generate()
 			end
 
 			cellsGenerated += 1
-			if cellsGenerated % terrainCfg.progress_every == 0 then
+			if cellsGenerated % progressEvery == 0 then
 				print("Прогресс: " .. cellsGenerated .. " ячеек")
-				wait()
+				task.wait()
 			end
 		end
+		columnIndex += 1
+		-- Периодический yield по столбцам — иначе Studio убивает скрипт по timeout.
+		if columnIndex % 2 == 0 then
+			task.wait()
+		end
+	end
+
+	-- Decoration / GrassLength из обычного серверного скрипта часто нельзя писать
+	-- (нужен PluginOrOpenCloud) — не валим всю генерацию из-за травы.
+	local clampedGrass = math.clamp(grassHeight, 0.1, 1)
+	local okDecor, decorErr = pcall(function()
+		Terrain.Decoration = grassCoverage > 0
+	end)
+	if not okDecor then
+		warn(string.format(
+			"⚠️ Terrain.Decoration из скрипта недоступен. В Studio включи Terrain.Decoration вручную. (%s)",
+			tostring(decorErr)
+		))
+	end
+	local okGrassLen, grassLenErr = pcall(function()
+		Terrain.GrassLength = clampedGrass
+	end)
+	if not okGrassLen then
+		warn(string.format(
+			"⚠️ GrassLength из скрипта не ставится. В Studio: Terrain.GrassLength = %.2f (%s)",
+			clampedGrass,
+			tostring(grassLenErr)
+		))
 	end
 
 	local function collectPonds(mask)
@@ -571,13 +634,12 @@ function TerrainGenerator.Generate()
 						break
 					end
 					need -= 1
-					if carved % 4 == 0 then
-						wait()
-					end
+					task.wait()
 				end
 
 				cursorZ += ChunkSize
 				chunkIz += 1
+				task.wait()
 			end
 			cursorX += ChunkSize
 			chunkIx += 1

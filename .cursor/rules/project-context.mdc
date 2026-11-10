@@ -36,7 +36,7 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 ## Что уже работает
 
 1. **Старт.** `workspace.WorldGenerated_v2` (`BoolValue`, атрибут `ConfigStamp`). Нет флага или штамп не совпал → стереть старые пропы (`BigTree`, `thin_tree`, `Stick`, `SmallRock`, `MediumRock`, `MegaTree`), `Terrain:Clear()` внутри генератора, заново ландшафт и объекты.
-2. **Рельеф.** `math.noise`, два октава. Высота = `base_height + noise`. Материалы: песок при `x/z > sand_min_*`, скала выше `rock_level`, иначе трава. Сейчас амплитуды маленькие, биом почти ровный.
+2. **Рельеф.** `math.noise`, два октава. Высота = `base_height + noise`. Скала выше `rock_level`; суша — `grass_coverage` доля Grass (Decoration), остальное Ground. `grass_height` → Terrain.GrassLength. Генерация на `map_size + 2*edge_margin`, FillBlock. Baseplate удаляется при генерации.
 3. **Пруды.** Естественные ямы (`pond_depth`, `pond_rim`, зеркало у кромки, не ниже дна) плюс добор до `max(min_ponds_per_chunk, ceil(pond_density))` на чанк, радиус воды `min_pond_size`. `pond_density = 0` отключает добор.
 4. **Пропы.** Обход воксельных колонок, шанс из `probabilities` — доля клеток, не вес. Посадка лучом сверху вниз. Сетка занятости + `exclusion_radius`. Занятая точка ищется в `spawn_search_radius`. Крутой уклон: дерево (`max_slope_for_tree`) и камень (`max_slope_for_prop`) ровняют диск (`flatten_radius`, внутренняя доля `flatten_flat_fraction`). MegaTree сажается на площадку, не на пик. Шаблоны: `BigTree`→тонкое, `MegaTree`, `SmallRock`, `MediumRock`; ветка — процедурный `Part`.
 
