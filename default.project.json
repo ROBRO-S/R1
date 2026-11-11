@@ -5,6 +5,11 @@
       "pattern": "**/biome_config.json",
       "use": "text",
       "suffix": ".json"
+    },
+    {
+      "pattern": "**/items_config.json",
+      "use": "text",
+      "suffix": ".json"
     }
   ],
   "tree": {
@@ -19,10 +24,16 @@
 
       "biome_config": {
         "$path": "src/biome_config.json"
+      },
+
+      "items_config": {
+        "$path": "src/items_config.json"
       }
     },
 
     "ServerScriptService": {
+      "$className": "ServerScriptService",
+
       "TerrainGenerator": {
         "$path": "src/server/TerrainGenerator.module.luau"
       },
@@ -35,13 +46,24 @@
         "$path": "src/server/scripts/ConfigLoader.module.luau"
       },
 
+      "ItemsConfig": {
+        "$path": "src/server/scripts/ItemsConfig.module.luau"
+      },
+
       "Main": {
         "$path": "src/server/scripts/Main.server.lua"
+      },
+
+      "FistWeapon": {
+        "$path": "src/server/scripts/FistWeapon.server.lua"
       }
     },
 
     "StarterPlayer": {
+      "$className": "StarterPlayer",
+
       "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
         "$path": "src/client"
       }
     }

@@ -1,0 +1,14 @@
+{
+  "FistWeapon": {
+    "kind": "melee",
+    "display_name": "Fists",
+    "combo_reset": 1.3,
+    "attack_cooldown": 0.38,
+    "finish_cooldown": 0.8,
+    "hit_delays": [0.15, 0.15, 0.22],
+    "damages": [50, 14, 22],
+    "hitbox": [4.5, 4.5, 4.5],
+    "knockback": 40,
+    "block_dot": 0.2
+  }
+}

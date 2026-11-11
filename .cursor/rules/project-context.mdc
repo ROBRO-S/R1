@@ -7,29 +7,43 @@ alwaysApply: true
 
 Survival-карта в духе Don't Starve. Код только в Git; Studio не править. Синк: `rojo serve` + `default.project.json`. Рантайм-библиотек нет: нет `wally.toml`, Matter/ECS и пакетов. В `docs/TD.md` они только как план.
 
+В `default.project.json` у сервисов и у `StarterPlayerScripts` нужен `$className` — иначе клиентские LocalScript могут не попасть в Test.
+
 ## Карта
 
 | Путь | В игре | Роль |
 |---|---|---|
-| `src/server/scripts/Main.server.lua` | `ServerScriptService.Main` (Script) | Старт: флаг мира, вызов генераторов |
+| `src/server/scripts/Main.server.lua` | `ServerScriptService.Main` (Script) | Старт: флаг мира, генераторы, спавн после готовности, тестовый `TrainingDummy` |
 | `src/server/scripts/ConfigLoader.module.luau` | `ServerScriptService.ConfigLoader` | Чтение `biome_config`, fallback, пороги спавна |
+| `src/server/scripts/ItemsConfig.module.luau` | `ServerScriptService.ItemsConfig` | Чтение `items_config`, fallback, `GetMelee(itemId)` |
 | `src/server/TerrainGenerator.module.luau` | `ServerScriptService.TerrainGenerator` | Воксельный рельеф и пруды |
 | `src/server/ObjectGenerator.module.luau` | `ServerScriptService.ObjectGenerator` | Деревья, ветки, камни |
+| `src/server/scripts/FistWeapon.server.lua` | `ServerScriptService.FistWeapon` (Script) | Tool кастетов, слоты/`InvState`, DataStore, блок, комбо-хитбокс, remotes |
 | `src/biome_config.json` | `ReplicatedStorage.biome_config` (StringValue) | Все числа генерации. `syncRules.use = "text"` |
-| `src/assets/*.rbxm` | `ReplicatedStorage.assets` | `BigTree`, `MegaTree` (Model); `SmallRock`, `MediumRock` (Union) |
-| `src/client/` | `StarterPlayer.StarterPlayerScripts` | Пусто, клиентских скриптов нет |
-| `src/PROGRESS.md` | не синкается | Заметки по балансу, не код |
+| `src/items_config.json` | `ReplicatedStorage.items_config` (StringValue) | Статы предметов (урон, кулдауны, хитбокс…). `syncRules.use = "text"` |
+| `src/assets/*.rbxm` | `ReplicatedStorage.assets` | `BigTree`, `MegaTree` (Model); `SmallRock`, `MediumRock` (Union); `fistweapon_A` (MeshPart) |
+| `src/client/Inventory.client.lua` | `StarterPlayer.StarterPlayerScripts.Inventory` | Хотбар 9 + рюкзак 20; слоты из `Player.InvState`; экип через `Remotes.EquipSlot` |
+| `src/client/FistStance.client.lua` | `StarterPlayer.StarterPlayerScripts.FistStance` | Стойка/блок/комбо-анимации FistWeapon; ЛКМ атака, ПКМ блок |
+| `PROGRESS.md` | не синкается | Заметки по балансу, не код |
 | `docs/`, `GDD.md`, `README.md` | не синкаются | Дизайн. Геймплей оттуда не считать сделанным |
 
-`require` идёт по инстансам в `ServerScriptService`, не по папкам на диске: `Main` делает `require(SSS.TerrainGenerator)`, генераторы — `require(script.Parent:WaitForChild("ConfigLoader"))`.
+`require` идёт по инстансам в `ServerScriptService`, не по папкам на диске: `Main` делает `require(SSS.TerrainGenerator)`, генераторы — `require(script.Parent:WaitForChild("ConfigLoader"))`, бой — `require(SSS.ItemsConfig)`.
+
+Рантайм (создаёт сервер, в Git нет): `ReplicatedStorage.Remotes` (`EquipSlot`, `FistBlock`, `FistAttack`); у игрока `InvState` (`SlotN` StringValue, `Equipped` IntValue).
 
 ## Модули и сеть
 
-Паттерн модуля: `local Foo = {}` → `function Foo.Method()` → `return Foo`. Точка входа генератора — `Generate()`. Конфиг — `ConfigLoader.Get()` (кэш на процесс) и `ConfigLoader.SpawnThresholds(cfg)` (накопленные пороги `thin < mega < stick < rock < boulder`).
+Паттерн модуля: `local Foo = {}` → `function Foo.Method()` → `return Foo`. Точка входа генератора — `Generate()`. Конфиг мира — `ConfigLoader.Get()` (кэш на процесс) и `ConfigLoader.SpawnThresholds(cfg)` (накопленные пороги `thin < mega < stick < rock < boulder`). Конфиг предметов — `ItemsConfig.Get()` / `ItemsConfig.GetMelee(itemId)`.
 
-Имена файлов Rojo: `*.server.lua` = Script, `*.module.luau` = ModuleScript. Инстансы ассетов и клонов называются как файл/шаблон (`MegaTree`, `Stick`). Комментарии по-русски. В новых и редактируемых модулях добавлять типизацию Luau и --!strict. Отступы смешанные: табы в `TerrainGenerator` и `ConfigLoader`, 4 пробела в `Main` и `ObjectGenerator` — в файле не переключать.
+Имена файлов Rojo: `*.server.lua` = Script, `*.client.lua` = LocalScript, `*.module.luau` = ModuleScript. Инстансы ассетов и клонов называются как файл/шаблон (`MegaTree`, `Stick`, `fistweapon_A`). Комментарии по-русски. В новых и редактируемых модулях добавлять типизацию Luau и --!strict. Отступы смешанные: табы в `TerrainGenerator`, `ConfigLoader`, `ItemsConfig`, `Inventory`, `FistStance`, `FistWeapon`; 4 пробела в `Main` и `ObjectGenerator` — в файле не переключать.
 
-`RemoteEvent` / `RemoteFunction` / `BindableEvent` нет. Не добавлять сеть, пока нет клиентского геймплея.
+Спавн: в начале `Main` сразу `Players.CharacterAutoLoads = false`; после готовности мира — прозрачный `SpawnLocation` без коллизии над рельефом, `LoadCharacter`, затем снова `CharacterAutoLoads = true`. Поднимать персонажа только если он застрял под землёй, не ставить на невидимую полку. Рядом со спавном `Main` ставит `workspace.TrainingDummy` (Humanoid 200 HP, для проверки урона; после смерти пересоздаётся).
+
+Инвентарь: сервер держит слоты в `session` + зеркало `Player.InvState`; Tool'ы с атрибутами `InvSlot` / `ItemId`. Клиентский UI читает `InvState` (не сканирует Backpack как источник истины). Экип/снятие — `Remotes.EquipSlot` (номер слота или `0`). Стартовый предмет — `FistWeapon` в слоте 1. DataStore `R1_Inventory_v1` только вне Studio (в Studio — сессия без API).
+
+Кастеты (`FistWeapon`): невидимый `Handle`; видимые клоны `fistweapon_A` варятся к обеим рукам (`FistWeapon_Right` / `FistWeapon_Left`). **Константы посадки рук в `FistWeapon.server.lua` уже отшлифованы вручную — не менять без явной просьбы.** Стойка/блок/удары — только клиентские анимации в `FistStance` (не Weld-стойка). ПКМ при экипе: блок → сервер ставит `Character.IsBlocking` и режет `WalkSpeed` (база в атрибуте `BaseWalkSpeed`). ЛКМ: комбо 1→2→3 → `Remotes.FistAttack(step)`; сервер валидирует экип/блок/кулдаун/шаг, после `hit_delays` бьёт `Workspace:GetPartBoundsInBox`, `TakeDamage` из статов предмета; цель с `IsBlocking` и Dot(Look, к атакующему) > `block_dot` блокирует урон; 3-й удар даёт knockback. Блок или снятие оружия на клиенте рвёт текущий трек удара (`Stop(0.05)`).
+
+Баланс предметов: **не хардкодить урон/кулдауны/хитбокс в коде боя.** Числа живут в `items_config.json` по ключу = `ItemId` (`FistWeapon`, позже `FistWeapon_gold`, кирки, топоры, мечи…). Поля melee: `kind`, `display_name`, `combo_reset`, `attack_cooldown`, `finish_cooldown`, `hit_delays`, `damages`, `hitbox`, `knockback`, `block_dot`. Новый предмет — новый ключ в JSON + тот же ключ в `fallback()` у `ItemsConfig` (хотя бы для стартовых). Сервер читает статы по `Tool.ItemId`; на Tool зеркалит тайминги атрибутами `ComboReset` / `AttackCooldown` / `FinishCooldown` для клиента. Будущие gather-предметы (`kind` ≠ `melee`) класть в тот же JSON своими полями — не смешивать с `biome_config`.
 
 Новое число генерации: поле в `biome_config.json` и тот же ключ в `fallback()` у `ConfigLoader`. Если от него зависит уже построенный мир — дописать его в `configStamp` в `Main`. Иначе `WorldGenerated_v2` не пересоберёт карту.
 
@@ -39,5 +53,8 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 2. **Рельеф.** `math.noise`, два октава. Высота = `base_height + noise`. Скала выше `rock_level`; суша — `grass_coverage` доля Grass (Decoration), остальное Ground. `grass_height` → Terrain.GrassLength. Генерация на `map_size + 2*edge_margin`, FillBlock. Baseplate удаляется при генерации.
 3. **Пруды.** Естественные ямы (`pond_depth`, `pond_rim`, зеркало у кромки, не ниже дна) плюс добор до `max(min_ponds_per_chunk, ceil(pond_density))` на чанк, радиус воды `min_pond_size`. `pond_density = 0` отключает добор.
 4. **Пропы.** Обход воксельных колонок, шанс из `probabilities` — доля клеток, не вес. Посадка лучом сверху вниз. Сетка занятости + `exclusion_radius`. Занятая точка ищется в `spawn_search_radius`. Крутой уклон: дерево (`max_slope_for_tree`) и камень (`max_slope_for_prop`) ровняют диск (`flatten_radius`, внутренняя доля `flatten_flat_fraction`). MegaTree сажается на площадку, не на пик. Шаблоны: `BigTree`→тонкое, `MegaTree`, `SmallRock`, `MediumRock`; ветка — процедурный `Part`.
+5. **Спавн игрока.** Персонаж появляется только после готовности мира; падает с прозрачного `SpawnLocation` на землю. Тестовый `TrainingDummy` у спавна.
+6. **Инвентарь.** Хотбар + рюкзак по `InvState`; экип через `EquipSlot`; стартовые кастеты в слоте 1; слоты не пропадают при снятии из рук.
+7. **FistWeapon.** Парные кастеты на руках; стойка; ПКМ — блок; ЛКМ — комбо из 3 ударов + серверный хитбокс/урон из `items_config`.
 
-Не сделано: инвентарь, крафт, голод/здоровье, день/ночь, мобы, рубка, UI.
+Не сделано: прочие предметы инвентаря (мечи, кирки, топоры, `FistWeapon_gold` и т.п.), крафт, голод/здоровье, день/ночь, мобы, рубка/добыча, загрузочный экран.
