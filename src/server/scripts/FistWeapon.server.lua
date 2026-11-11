@@ -1,12 +1,17 @@
 --!strict
 -- Кастеты + слоты. Handle невидимый; кастеты Weld к рукам.
--- Стойка/блок — клиентские анимации; сервер только IsBlocking + WalkSpeed.
+-- Стойка/блок/удары — клиентские анимации; сервер: IsBlocking, WalkSpeed, хитбокс.
 -- Экип слота — RemoteEvent (клиентский EquipTool после Unequip глючит).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local ItemsConfig = require(ServerScriptService:WaitForChild("ItemsConfig"))
+type MeleeStats = ItemsConfig.MeleeStats
 
 -- === Посадка на кулаки (можно чуть утопить внутрь руки) ===
 local RIGHT_FIST_POSITION = Vector3.new(0, 0.1, 0)
@@ -28,6 +33,10 @@ local SLOT_COUNT = 20
 local STORE_NAME = "R1_Inventory_v1"
 local ATTR_SLOT = "InvSlot"
 local ATTR_ITEM = "ItemId"
+-- Клиент читает тайминги комбо с Tool (из items_config).
+local ATTR_COMBO_RESET = "ComboReset"
+local ATTR_ATTACK_CD = "AttackCooldown"
+local ATTR_FINISH_CD = "FinishCooldown"
 
 local function anglesFromDeg(rot: Vector3): CFrame
 	return CFrame.Angles(math.rad(rot.X), math.rad(rot.Y), math.rad(rot.Z))
@@ -96,6 +105,7 @@ end
 
 local equipRemote = ensureRemote("EquipSlot")
 local blockRemote = ensureRemote("FistBlock")
+local attackRemote = ensureRemote("FistAttack")
 
 -- DataStore только вне Studio (иначе спам StudioAccessToApisNotAllowed).
 local store: DataStore? = nil
@@ -109,6 +119,7 @@ if not RunService:IsStudio() then
 end
 
 local session: { [Player]: { slots: { [number]: string }, equipped: number } } = {}
+local attackState: { [Player]: { lastAttackAt: number, lastStep: number, cooldownUntil: number } } = {}
 
 local function ensureInvState(player: Player): Folder
 	local folder = player:FindFirstChild("InvState")
@@ -252,13 +263,143 @@ local function hasFistEquipped(character: Model): boolean
 	return tool ~= nil and tool:IsA("Tool")
 end
 
+local function getRootPart(character: Model): BasePart?
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root
+	end
+	return nil
+end
+
+local function isFacingAttacker(targetRoot: BasePart, attackerRoot: BasePart, blockDot: number): boolean
+	local toAttacker = attackerRoot.Position - targetRoot.Position
+	local flat = Vector3.new(toAttacker.X, 0, toAttacker.Z)
+	if flat.Magnitude < 1e-3 then
+		return true
+	end
+	return targetRoot.CFrame.LookVector:Dot(flat.Unit) > blockDot
+end
+
+local function applyKnockback(attackerRoot: BasePart, targetRoot: BasePart, force: number)
+	local push = targetRoot.Position - attackerRoot.Position
+	local flat = Vector3.new(push.X, 0, push.Z)
+	if flat.Magnitude < 1e-3 then
+		flat = attackerRoot.CFrame.LookVector
+		flat = Vector3.new(flat.X, 0, flat.Z)
+	end
+	if flat.Magnitude < 1e-3 then
+		return
+	end
+	targetRoot:ApplyImpulse(flat.Unit * force * targetRoot.AssemblyMass)
+end
+
+local function applyCombatAttrs(tool: Tool, stats: MeleeStats)
+	tool:SetAttribute(ATTR_COMBO_RESET, stats.combo_reset)
+	tool:SetAttribute(ATTR_ATTACK_CD, stats.attack_cooldown)
+	tool:SetAttribute(ATTR_FINISH_CD, stats.finish_cooldown)
+	if stats.display_name ~= "" then
+		tool.ToolTip = stats.display_name
+	end
+end
+
+local function resolveEquippedItemId(character: Model): string?
+	local tool = character:FindFirstChild(TOOL_NAME)
+	if not (tool and tool:IsA("Tool")) then
+		return nil
+	end
+	local itemId = tool:GetAttribute(ATTR_ITEM)
+	if typeof(itemId) == "string" and itemId ~= "" then
+		return itemId
+	end
+	return ITEM_ID
+end
+
+local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
+	local character = attacker.Character
+	if not character then
+		return
+	end
+	if not hasFistEquipped(character) then
+		return
+	end
+	if character:GetAttribute("IsBlocking") == true then
+		return
+	end
+
+	local attackerHumanoid = character:FindFirstChildOfClass("Humanoid")
+	local attackerRoot = getRootPart(character)
+	if not attackerHumanoid or attackerHumanoid.Health <= 0 or not attackerRoot then
+		return
+	end
+
+	local damage = stats.damages[step]
+	if typeof(damage) ~= "number" then
+		return
+	end
+
+	local hitbox = ItemsConfig.HitboxSize(stats)
+	local comboLength = ItemsConfig.ComboLength(stats)
+	local hitCFrame = attackerRoot.CFrame * CFrame.new(0, 0, -(hitbox.Z * 0.5))
+	local overlap = OverlapParams.new()
+	overlap.FilterType = Enum.RaycastFilterType.Exclude
+	overlap.FilterDescendantsInstances = { character }
+	overlap.RespectCanCollide = false
+
+	local hitHumanoids: { [Humanoid]: boolean } = {}
+	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, hitbox, overlap)) do
+		local model = part:FindFirstAncestorOfClass("Model")
+		if model and model ~= character then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.Health > 0 and not hitHumanoids[humanoid] then
+				hitHumanoids[humanoid] = true
+
+				local finalDamage = damage
+				local targetRoot = getRootPart(model)
+				local blocked = model:GetAttribute("IsBlocking") == true
+					and targetRoot ~= nil
+					and isFacingAttacker(targetRoot, attackerRoot, stats.block_dot)
+				if blocked then
+					finalDamage = 0
+				end
+
+				if finalDamage > 0 then
+					humanoid:TakeDamage(finalDamage)
+				end
+
+				if step >= comboLength and not blocked and targetRoot then
+					applyKnockback(attackerRoot, targetRoot, stats.knockback)
+				end
+			end
+		end
+	end
+end
+
+local function expectedComboStep(
+	state: { lastAttackAt: number, lastStep: number },
+	now: number,
+	comboReset: number,
+	comboLength: number
+): number
+	if state.lastAttackAt <= 0 or now - state.lastAttackAt > comboReset then
+		return 1
+	end
+	if state.lastStep >= comboLength then
+		return 1
+	end
+	return state.lastStep + 1
+end
+
 local function createTool(): Tool
+	local stats = ItemsConfig.GetMelee(ITEM_ID)
 	local tool = Instance.new("Tool")
 	tool.Name = TOOL_NAME
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
-	tool.ToolTip = "Fists"
+	tool.ToolTip = if stats then stats.display_name else "Fists"
 	tool.Grip = CFrame.new()
+	if stats then
+		applyCombatAttrs(tool, stats)
+	end
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
@@ -343,10 +484,18 @@ local function ensureTools(player: Player)
 			if existing then
 				existing:SetAttribute(ATTR_SLOT, slot)
 				existing:SetAttribute(ATTR_ITEM, ITEM_ID)
+				local stats = ItemsConfig.GetMelee(ITEM_ID)
+				if stats then
+					applyCombatAttrs(existing, stats)
+				end
 			else
 				local tool = createTool()
 				tool:SetAttribute(ATTR_SLOT, slot)
 				tool:SetAttribute(ATTR_ITEM, ITEM_ID)
+				local stats = ItemsConfig.GetMelee(ITEM_ID)
+				if stats then
+					applyCombatAttrs(tool, stats)
+				end
 				tool.Parent = backpack
 			end
 		end
@@ -531,6 +680,72 @@ blockRemote.OnServerEvent:Connect(function(player: Player, active: any)
 	end
 end)
 
+attackRemote.OnServerEvent:Connect(function(player: Player, stepAny: any)
+	if typeof(stepAny) ~= "number" then
+		return
+	end
+	local step = math.floor(stepAny)
+
+	local character = player.Character
+	if not character then
+		return
+	end
+	local itemId = resolveEquippedItemId(character)
+	if not itemId then
+		return
+	end
+	local stats = ItemsConfig.GetMelee(itemId)
+	if not stats then
+		return
+	end
+
+	local comboLength = ItemsConfig.ComboLength(stats)
+	if step < 1 or step > comboLength then
+		return
+	end
+	if character:GetAttribute("IsBlocking") == true then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
+
+	local now = os.clock()
+	local state = attackState[player]
+	if not state then
+		state = { lastAttackAt = 0, lastStep = 0, cooldownUntil = 0 }
+		attackState[player] = state
+	end
+
+	if now < state.cooldownUntil then
+		return
+	end
+
+	local expected = expectedComboStep(state, now, stats.combo_reset, comboLength)
+	if step ~= expected then
+		return
+	end
+
+	local hitDelay = stats.hit_delays[step]
+	if typeof(hitDelay) ~= "number" then
+		return
+	end
+
+	state.lastAttackAt = now
+	state.lastStep = step
+	local cooldown = if step >= comboLength then stats.finish_cooldown else stats.attack_cooldown
+	state.cooldownUntil = now + cooldown
+
+	task.delay(hitDelay, function()
+		if not player.Parent then
+			return
+		end
+		resolveHit(player, step, stats)
+	end)
+end)
+
 Players.PlayerAdded:Connect(hookPlayer)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(hookPlayer, player)
@@ -539,6 +754,7 @@ end
 Players.PlayerRemoving:Connect(function(player)
 	saveSlots(player)
 	session[player] = nil
+	attackState[player] = nil
 end)
 
 game:BindToClose(function()

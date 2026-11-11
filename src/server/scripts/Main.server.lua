@@ -100,6 +100,58 @@ local function ensureSpawnLocation()
     end
 end
 
+-- Манекен у спавна: проверка хитбокса/урона FistWeapon.
+local function ensureTrainingDummy()
+    local old = workspace:FindFirstChild("TrainingDummy")
+    if old then
+        old:Destroy()
+    end
+
+    local x, z = 14, 0
+    local ground = surfaceY(x, z)
+
+    local model = Instance.new("Model")
+    model.Name = "TrainingDummy"
+
+    local function addPart(name, size, offset, color)
+        local part = Instance.new("Part")
+        part.Name = name
+        part.Size = size
+        part.Anchored = true
+        part.CanCollide = true
+        part.Massless = true
+        part.Material = Enum.Material.SmoothPlastic
+        part.Color = color
+        part.CFrame = CFrame.new(x, ground, z) * CFrame.new(offset)
+        part.Parent = model
+        return part
+    end
+
+    local root = addPart("HumanoidRootPart", Vector3.new(2, 2, 1), Vector3.new(0, 3, 0), Color3.fromRGB(190, 150, 110))
+    addPart("Head", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 4.6, 0), Color3.fromRGB(220, 180, 140))
+    addPart("Left Arm", Vector3.new(1, 2, 1), Vector3.new(-1.5, 3, 0), Color3.fromRGB(190, 150, 110))
+    addPart("Right Arm", Vector3.new(1, 2, 1), Vector3.new(1.5, 3, 0), Color3.fromRGB(190, 150, 110))
+    addPart("Left Leg", Vector3.new(1, 2, 1), Vector3.new(-0.5, 1, 0), Color3.fromRGB(80, 90, 120))
+    addPart("Right Leg", Vector3.new(1, 2, 1), Vector3.new(0.5, 1, 0), Color3.fromRGB(80, 90, 120))
+
+    local humanoid = Instance.new("Humanoid")
+    humanoid.Name = "Humanoid"
+    humanoid.MaxHealth = 200
+    humanoid.Health = 200
+    humanoid.DisplayName = "Манекен"
+    humanoid.WalkSpeed = 0
+    humanoid.JumpPower = 0
+    humanoid.AutoRotate = false
+    humanoid.Parent = model
+
+    model.PrimaryPart = root
+    model.Parent = workspace
+
+    humanoid.Died:Connect(function()
+        task.delay(1.5, ensureTrainingDummy)
+    end)
+end
+
 local function hasLivingCharacter(player)
     local character = player.Character
     if not character then
@@ -182,6 +234,7 @@ end
 
 local function releasePlayers()
     ensureSpawnLocation()
+    ensureTrainingDummy()
     worldReady = true
     -- После готовности мира обычный автоспавн/респавн снова включён.
     Players.CharacterAutoLoads = true

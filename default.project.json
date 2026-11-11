@@ -5,6 +5,11 @@
       "pattern": "**/biome_config.json",
       "use": "text",
       "suffix": ".json"
+    },
+    {
+      "pattern": "**/items_config.json",
+      "use": "text",
+      "suffix": ".json"
     }
   ],
   "tree": {
@@ -19,6 +24,10 @@
 
       "biome_config": {
         "$path": "src/biome_config.json"
+      },
+
+      "items_config": {
+        "$path": "src/items_config.json"
       }
     },
 
@@ -35,6 +44,10 @@
 
       "ConfigLoader": {
         "$path": "src/server/scripts/ConfigLoader.module.luau"
+      },
+
+      "ItemsConfig": {
+        "$path": "src/server/scripts/ItemsConfig.module.luau"
       },
 
       "Main": {
