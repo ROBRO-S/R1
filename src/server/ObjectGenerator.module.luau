@@ -781,11 +781,13 @@ function ObjectGenerator.Generate()
             if child:IsA("BasePart") then
                 child.Transparency = 0
                 child.CanCollide = true
+                child.CanQuery = true
             end
         end
         if model:IsA("BasePart") then
             model.Transparency = 0
             model.CanCollide = true
+            model.CanQuery = true
         end
 
         local soil = Instance.new("Part")
@@ -795,8 +797,16 @@ function ObjectGenerator.Generate()
         soil.Transparency = props.soil_transparency
         soil.Anchored = true
         soil.CanCollide = false
+        soil.CanQuery = false
         soil.Parent = model
         model.PrimaryPart = soil
+        -- Прочность для рубки топором (AxeCombat): biome_config.props.mega_tree_hp.
+        local megaHp = props.mega_tree_hp
+        if typeof(megaHp) ~= "number" or megaHp < 1 then
+            megaHp = 75
+        end
+        model:SetAttribute("HP", megaHp)
+        model.Name = "MegaTree"
     end
 
     local thinRadius = props.thin_tree_radius

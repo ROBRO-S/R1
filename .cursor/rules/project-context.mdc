@@ -20,7 +20,9 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 | `src/server/scripts/WorldLoot.server.lua` | `ServerScriptService.WorldLoot` | ProximityPrompt на Stick/SmallRock/дроп, спавн лута на земле |
 | `src/server/TerrainGenerator.module.luau` | `ServerScriptService.TerrainGenerator` | Воксельный рельеф и пруды |
 | `src/server/ObjectGenerator.module.luau` | `ServerScriptService.ObjectGenerator` | Деревья, ветки, камни |
+| `src/server/ResourceRespawnManager.module.luau` | `ServerScriptService.ResourceRespawnManager` | Очередь респавна (1/тик), MegaTree после рубки |
 | `src/server/scripts/FistWeapon.server.lua` | `ServerScriptService.FistWeapon` | Tool кастетов + held-Tool для ресурсов; weld-визуал; бой; экип |
+| `src/server/scripts/AxeCombat.module.luau` | `ServerScriptService.AxeCombat` | Топор: урон манекену, рубка MegaTree, вал + дроп Stick |
 | `src/biome_config.json` | `ReplicatedStorage.biome_config` (StringValue) | Все числа генерации. `syncRules.use = "text"` |
 | `src/items_config.json` | `ReplicatedStorage.items_config` (StringValue) | Предметы: kind, display_name, icon, max_stack, melee-статы… |
 | `src/shared/ItemCatalog.module.luau` | `ReplicatedStorage.Shared.ItemCatalog` | Клиентское чтение имён/иконок из `items_config` |

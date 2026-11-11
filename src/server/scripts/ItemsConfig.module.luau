@@ -18,6 +18,8 @@ export type MeleeStats = {
 	finish_cooldown: number,
 	hit_delays: { number },
 	damages: { number },
+	-- Урон по MegaTree (если нет — берём damages[1]). Разные топоры = разный tree_damage.
+	tree_damage: number?,
 	hitbox: { number },
 	knockback: number,
 	block_dot: number,
@@ -59,12 +61,36 @@ local function resourceFallback(displayName: string, worldName: string, maxStack
 	}
 end
 
+local function axeMeleeFallback(): MeleeStats
+	return {
+		kind = "melee",
+		display_name = "Axe",
+		icon = "",
+		combo_reset = 0.5,
+		attack_cooldown = 0.5,
+		finish_cooldown = 0.5,
+		hit_delays = { 0.17 },
+		-- Урон по манекену/мобам (слабее кастетов).
+		damages = { 8 },
+		-- Урон по MegaTree: при mega_tree_hp=75 → 5 ударов.
+		tree_damage = 15,
+		hitbox = { 10, 20, 10 },
+		knockback = 0,
+		block_dot = 0.2,
+	}
+end
+
 local function fallback(): { [string]: any }
 	local fists = meleeFallback()
 	local fistInfo: any = fists
 	fistInfo.max_stack = 1
+	local axe = axeMeleeFallback()
+	local axeInfo: any = axe
+	axeInfo.max_stack = 1
+	axeInfo.world_name = "Axe"
 	return {
 		FistWeapon = fistInfo,
+		Axe = axeInfo,
 		Stick = resourceFallback("Stick", "Stick", 99),
 		SmallRock = resourceFallback("Rock", "SmallRock", 99),
 	}
@@ -296,6 +322,19 @@ end
 
 function ItemsConfig.ComboLength(stats: MeleeStats): number
 	return math.max(1, math.min(#stats.damages, #stats.hit_delays))
+end
+
+-- Урон топора/инструмента по деревьям. Нет tree_damage → damages[1].
+function ItemsConfig.TreeDamage(stats: MeleeStats): number
+	local td = (stats :: any).tree_damage
+	if typeof(td) == "number" and td > 0 then
+		return td
+	end
+	local d = stats.damages[1]
+	if typeof(d) == "number" and d > 0 then
+		return d
+	end
+	return 15
 end
 
 return ItemsConfig

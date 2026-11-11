@@ -13,6 +13,22 @@
     "knockback": 40,
     "block_dot": 0.2
   },
+  "Axe": {
+    "kind": "melee",
+    "display_name": "Axe",
+    "icon": "",
+    "world_name": "Axe",
+    "max_stack": 1,
+    "combo_reset": 0.5,
+    "attack_cooldown": 0.5,
+    "finish_cooldown": 0.5,
+    "hit_delays": [0.17],
+    "damages": [8],
+    "tree_damage": 15,
+    "hitbox": [10, 20, 10],
+    "knockback": 0,
+    "block_dot": 0.2
+  },
   "Stick": {
     "kind": "resource",
     "display_name": "Stick",

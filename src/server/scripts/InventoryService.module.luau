@@ -33,7 +33,7 @@ local session: { [Player]: Session } = {}
 local store: DataStore? = nil
 local toolSync: ((Player) -> ())? = nil
 local dropSpawner: ((Player, string) -> boolean)? = nil
-local visualCleanup: ((Player) -> ())? = nil
+local visualCleanups: { (Player) -> () } = {}
 
 if not RunService:IsStudio() then
 	local ok, result = pcall(function()
@@ -109,7 +109,7 @@ function InventoryService.SetDropSpawner(callback: (Player, string) -> boolean)
 end
 
 function InventoryService.SetVisualCleanup(callback: (Player) -> ())
-	visualCleanup = callback
+	table.insert(visualCleanups, callback)
 end
 
 function InventoryService.GetSession(player: Player): Session?
@@ -172,7 +172,11 @@ function InventoryService.WriteState(player: Player)
 end
 
 local function defaultSlots(): { [number]: SlotStack }
-	return { [1] = makeStack(DEFAULT_ITEM, 1) }
+	-- Слот 2: Axe для проверки экипа/дропа (анимации топора позже).
+	return {
+		[1] = makeStack(DEFAULT_ITEM, 1),
+		[2] = makeStack("Axe", 1),
+	}
 end
 
 local function parseSlotEntry(raw: any): SlotStack?
@@ -303,8 +307,8 @@ local function destroyToolInSlot(player: Player, slot: number)
 	scan(player:FindFirstChildOfClass("Backpack"))
 	scan(player.Character)
 
-	if visualCleanup then
-		visualCleanup(player)
+	for _, cleanup in ipairs(visualCleanups) do
+		cleanup(player)
 	end
 end
 
@@ -496,6 +500,11 @@ end
 
 local dropRemote = ensureRemote("DropSlot")
 local moveRemote = ensureRemote("MoveSlot")
+-- AxeAttack создаём здесь заранее: клиент не должен ждать отдельный Script.
+ensureRemote("AxeAttack")
+ensureRemote("EquipSlot")
+ensureRemote("FistBlock")
+ensureRemote("FistAttack")
 
 dropRemote.OnServerEvent:Connect(function(player: Player, slotAny: any)
 	if typeof(slotAny) ~= "number" then

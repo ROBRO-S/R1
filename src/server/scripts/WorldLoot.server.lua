@@ -20,6 +20,7 @@ local PICKABLE_NAMES: { [string]: string } = {
 	Stick = "Stick",
 	SmallRock = "SmallRock",
 	FistWeapon = "FistWeapon",
+	Axe = "Axe",
 }
 
 local stickColor = Color3.fromRGB(120, 85, 50)
@@ -172,6 +173,45 @@ local function makeFistDropAt(position: Vector3): Instance
 	return part
 end
 
+local function makeAxeDropAt(position: Vector3): Instance
+	local assets = assetsFolder()
+	local template = assets and assets:FindFirstChild("Axe")
+	local yaw = math.random() * math.pi * 2
+	local rot = CFrame.Angles(0, yaw, math.rad(90))
+	if template and template:IsA("BasePart") then
+		local part = template:Clone()
+		part.Name = "Axe"
+		part.Transparency = 0
+		part.CanCollide = false
+		part.Massless = true
+		part.Parent = Workspace
+		seatOnGround(part, position, rot)
+		anchorAll(part)
+		return part
+	end
+	if template and template:IsA("Model") then
+		local model = template:Clone()
+		model.Name = "Axe"
+		local host = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+		model.Parent = Workspace
+		if host then
+			seatOnGround(host, position, rot)
+		end
+		anchorAll(model)
+		return model
+	end
+	local part = Instance.new("Part")
+	part.Name = "Axe"
+	part.Size = Vector3.new(0.35, 2.2, 0.7)
+	part.Color = Color3.fromRGB(120, 90, 55)
+	part.Material = Enum.Material.Wood
+	part.CanCollide = false
+	part.Parent = Workspace
+	seatOnGround(part, position, rot)
+	anchorAll(part)
+	return part
+end
+
 local function spawnWorldItem(itemId: string, position: Vector3): Instance?
 	if itemId == "Stick" then
 		return makeStickAt(position)
@@ -179,6 +219,8 @@ local function spawnWorldItem(itemId: string, position: Vector3): Instance?
 		return makeSmallRockAt(position)
 	elseif itemId == "FistWeapon" then
 		return makeFistDropAt(position)
+	elseif itemId == "Axe" then
+		return makeAxeDropAt(position)
 	end
 	local part = Instance.new("Part")
 	part.Name = ItemsConfig.WorldName(itemId)
@@ -281,6 +323,25 @@ end
 
 InventoryService.SetDropSpawner(dropInFront)
 
+-- Серверный спавн лута (рубка MegaTree → Stick и т.п.).
+local spawnBinder = Instance.new("BindableFunction")
+spawnBinder.Name = "SpawnWorldLoot"
+spawnBinder.Parent = ServerScriptService
+spawnBinder.OnInvoke = function(itemId: any, position: any): boolean
+	if typeof(itemId) ~= "string" or typeof(position) ~= "Vector3" then
+		return false
+	end
+	if not ItemsConfig.IsKnown(itemId) then
+		return false
+	end
+	local spawned = spawnWorldItem(itemId, position)
+	if not spawned then
+		return false
+	end
+	setupLoot(spawned, itemId)
+	return true
+end
+
 local function trySetup(inst: Instance)
 	if inst.Parent ~= Workspace then
 		return
@@ -299,4 +360,4 @@ Workspace.ChildAdded:Connect(function(child)
 	task.defer(trySetup, child)
 end)
 
-print("WorldLoot: готов (Stick / SmallRock / дроп)")
+print("WorldLoot: готов (Stick / SmallRock / FistWeapon / Axe / дроп)")

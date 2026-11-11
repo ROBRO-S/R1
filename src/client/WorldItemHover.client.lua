@@ -16,6 +16,7 @@ local ATTR_WORLD_LOOT = "WorldLoot"
 
 local FALLBACK_NAMES: { [string]: string } = {
 	FistWeapon = "Fist Weapon",
+	Axe = "Axe",
 	Stick = "Stick",
 	SmallRock = "Rock",
 }
@@ -103,7 +104,7 @@ local function resolveItemId(inst: Instance?): string?
 				return id
 			end
 		end
-		if node.Name == "Stick" or node.Name == "SmallRock" or node.Name == "FistWeapon" then
+		if node.Name == "Stick" or node.Name == "SmallRock" or node.Name == "FistWeapon" or node.Name == "Axe" then
 			return node.Name
 		end
 		node = node.Parent

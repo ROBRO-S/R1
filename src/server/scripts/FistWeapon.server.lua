@@ -12,6 +12,19 @@ local ItemsConfig = require(ServerScriptService:WaitForChild("ItemsConfig"))
 local InventoryService = require(ServerScriptService:WaitForChild("InventoryService"))
 type MeleeStats = ItemsConfig.MeleeStats
 
+-- Топор: remote + хит логика (на случай если AxeCombatBoot не поднялся).
+do
+	local ok, axe = pcall(function()
+		return require(ServerScriptService:WaitForChild("AxeCombat", 10))
+	end)
+	if ok and type(axe) == "table" and type(axe.Start) == "function" then
+		axe.Start()
+	else
+		warn("FistWeapon: не смог Start AxeCombat:", axe)
+		InventoryService.EnsureRemote("AxeAttack")
+	end
+end
+
 -- === Посадка на кулаки (можно чуть утопить внутрь руки) ===
 local RIGHT_FIST_POSITION = Vector3.new(0, 0.1, 0)
 local RIGHT_FIST_ROTATION_DEG = Vector3.new(0, 0, -90)
@@ -422,7 +435,65 @@ local function hookHeldTool(tool: Tool)
 	end)
 end
 
--- Обычный предмет в руке (камень, ветка, будущие ресурсы).
+local function prepareHandlePart(part: BasePart)
+	part.Anchored = false
+	part.CanCollide = false
+	part.Massless = true
+	part.CastShadow = true
+	part.CanTouch = false
+	part.CanQuery = false
+end
+
+-- Ассет (Part/Union/Model) → Handle Tool'а. Grip потом подгонишь.
+local function attachAssetHandle(tool: Tool, assetName: string): BasePart?
+	local assets = ReplicatedStorage:FindFirstChild("assets")
+	local template = assets and assets:FindFirstChild(assetName)
+	if not template then
+		return nil
+	end
+
+	if template:IsA("BasePart") then
+		local handle = template:Clone()
+		handle.Name = "Handle"
+		handle.Transparency = 0
+		prepareHandlePart(handle)
+		handle.Parent = tool
+		return handle
+	end
+
+	if template:IsA("Model") then
+		local model = template:Clone()
+		local handle = model.PrimaryPart
+		if not (handle and handle:IsA("BasePart")) then
+			handle = model:FindFirstChildWhichIsA("BasePart", true)
+		end
+		if not handle then
+			model:Destroy()
+			return nil
+		end
+		handle.Name = "Handle"
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				prepareHandlePart(d)
+				if d ~= handle then
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = handle
+					weld.Part1 = d
+					weld.Parent = handle
+				end
+			end
+		end
+		for _, child in ipairs(model:GetChildren()) do
+			child.Parent = tool
+		end
+		model:Destroy()
+		return handle
+	end
+
+	return nil
+end
+
+-- Обычный предмет в руке (камень, ветка, топор, будущие ресурсы).
 local function createHeldTool(itemId: string): Tool
 	local tool = Instance.new("Tool")
 	tool.Name = itemId
@@ -439,12 +510,10 @@ local function createHeldTool(itemId: string): Tool
 		handle.Material = Enum.Material.Wood
 		tool.Grip = CFrame.new(0, -0.05, 0) * CFrame.Angles(0, 0, math.rad(90))
 	elseif itemId == "SmallRock" then
-		local assets = ReplicatedStorage:FindFirstChild("assets")
-		local template = assets and assets:FindFirstChild("SmallRock")
-		if template and template:IsA("BasePart") then
-			handle = template:Clone()
-			handle.Transparency = 0
-			scalePartTo(handle, 1.1)
+		local rock = attachAssetHandle(tool, "SmallRock")
+		if rock then
+			scalePartTo(rock, 1.1)
+			handle = rock
 		else
 			handle = Instance.new("Part")
 			handle.Size = Vector3.new(0.95, 0.7, 1.05)
@@ -452,6 +521,51 @@ local function createHeldTool(itemId: string): Tool
 			handle.Material = Enum.Material.Slate
 		end
 		tool.Grip = CFrame.new(0, -0.12, -0.25)
+	elseif itemId == "Axe" then
+		-- Невидимый Handle (Grip) + видимый AxeVisual, всегда в правой руке.
+		handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(0.2, 0.2, 0.2)
+		handle.Transparency = 1
+		handle.CanCollide = false
+		handle.Massless = true
+		handle.CastShadow = false
+		prepareHandlePart(handle)
+		handle.Parent = tool
+
+		local visual: BasePart? = nil
+		local assets = ReplicatedStorage:FindFirstChild("assets")
+		local template = assets and assets:FindFirstChild("Axe")
+		if template and template:IsA("BasePart") then
+			visual = template:Clone()
+		elseif template and template:IsA("Model") then
+			local src = template.PrimaryPart or template:FindFirstChildWhichIsA("BasePart", true)
+			if src then
+				visual = src:Clone()
+			end
+		end
+		if not visual then
+			visual = Instance.new("Part")
+			visual.Size = Vector3.new(0.35, 2.2, 0.7)
+			visual.Color = Color3.fromRGB(120, 90, 55)
+			visual.Material = Enum.Material.Wood
+			warn("FistWeapon: нет assets.Axe — временный Part")
+		end
+		visual.Name = "AxeVisual"
+		visual.Transparency = 0
+		prepareHandlePart(visual)
+		visual.Parent = tool
+		local weld = Instance.new("Weld")
+		weld.Name = "AxeRightWeld"
+		weld.Part0 = handle
+		weld.Part1 = visual
+		weld.C0 = CFrame.new()
+		weld.C1 = CFrame.new()
+		weld.Parent = visual
+		tool:SetAttribute("AxeVisualFormat", 2)
+		tool.ManualActivationOnly = false
+		-- Grip уже отшлифован — не менять без просьбы.
+		tool.Grip = CFrame.new(-0.3, -0.9, 0) * CFrame.Angles(0, math.rad(-90), 0)
 	else
 		handle = Instance.new("Part")
 		handle.Size = Vector3.new(0.7, 0.7, 0.7)
@@ -460,19 +574,23 @@ local function createHeldTool(itemId: string): Tool
 		tool.Grip = CFrame.new(0, -0.1, -0.2)
 	end
 
-	handle.Name = "Handle"
-	handle.Anchored = false
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.CastShadow = true
-	handle.Parent = tool
+	if handle.Parent ~= tool then
+		handle.Name = "Handle"
+		prepareHandlePart(handle)
+		handle.Parent = tool
+	end
 
 	hookHeldTool(tool)
 	return tool
 end
 
+local function usesFistVisual(itemId: string): boolean
+	-- Только семейство кастетов: невидимый Handle + weld на руки.
+	return itemId == ITEM_ID or string.sub(itemId, 1, #"FistWeapon") == "FistWeapon"
+end
+
 local function createToolForItem(itemId: string): Tool
-	if ItemsConfig.IsMelee(itemId) then
+	if usesFistVisual(itemId) then
 		local tool = createTool()
 		tool.Name = itemId
 		return tool
@@ -520,16 +638,30 @@ local function ensureTools(player: Player)
 			return tool:GetAttribute(ATTR_SLOT) == slot
 		end)
 		if existing then
-			existing.Name = itemId
-			existing:SetAttribute(ATTR_SLOT, slot)
-			existing:SetAttribute(ATTR_ITEM, itemId)
-			if ItemsConfig.IsMelee(itemId) then
-				local stats = ItemsConfig.GetMelee(itemId)
-				if stats then
-					applyCombatAttrs(existing, stats)
+			-- Только совсем старый Axe (без метки формата).
+			local needsAxeRebuild = itemId == "Axe"
+				and existing:GetAttribute("AxeVisualFormat") ~= 2
+			if needsAxeRebuild then
+				local character = player.Character
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if humanoid and existing.Parent == character then
+					humanoid:UnequipTools()
+				end
+				existing:Destroy()
+				existing = nil
+			else
+				existing.Name = itemId
+				existing:SetAttribute(ATTR_SLOT, slot)
+				existing:SetAttribute(ATTR_ITEM, itemId)
+				if ItemsConfig.IsMelee(itemId) then
+					local stats = ItemsConfig.GetMelee(itemId)
+					if stats then
+						applyCombatAttrs(existing, stats)
+					end
 				end
 			end
-		else
+		end
+		if not existing then
 			local tool = createToolForItem(itemId)
 			tool:SetAttribute(ATTR_SLOT, slot)
 			tool:SetAttribute(ATTR_ITEM, itemId)
