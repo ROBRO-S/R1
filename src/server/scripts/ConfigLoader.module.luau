@@ -116,7 +116,7 @@ local function fallback()
 			ground_ray_down = 100,
 			small_rock_color = { 100, 100, 100 },
 			rock_transparency = 0,
-			boulder_tilt = 15,
+			boulder_tilt = 0,
 			boulder_color = { 80, 80, 80 },
 			chunk_log_every = 500,
 		},

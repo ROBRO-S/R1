@@ -1,6 +1,6 @@
 --!strict
--- Загрузчик items_config.json: статы оружия/инструментов по ItemId.
--- Новый предмет = новый ключ в JSON (FistWeapon_gold, WoodenAxe, ...).
+-- Загрузчик items_config.json: статы оружия/инструментов/ресурсов по ItemId.
+-- Новый предмет = новый ключ в JSON (FistWeapon_gold, WoodenAxe, Stick, ...).
 -- Rojo syncRules use=text → ReplicatedStorage.items_config (StringValue).
 
 local ItemsConfig = {}
@@ -12,6 +12,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 export type MeleeStats = {
 	kind: string,
 	display_name: string,
+	icon: string,
 	combo_reset: number,
 	attack_cooldown: number,
 	finish_cooldown: number,
@@ -22,12 +23,21 @@ export type MeleeStats = {
 	block_dot: number,
 }
 
+export type ItemInfo = {
+	kind: string,
+	display_name: string,
+	icon: string,
+	world_name: string?,
+	max_stack: number,
+}
+
 local cached: { [string]: any }? = nil
 
 local function meleeFallback(): MeleeStats
 	return {
 		kind = "melee",
-		display_name = "Fists",
+		display_name = "Fist Weapon",
+		icon = "",
 		combo_reset = 1.3,
 		attack_cooldown = 0.38,
 		finish_cooldown = 0.8,
@@ -39,9 +49,24 @@ local function meleeFallback(): MeleeStats
 	}
 end
 
-local function fallback(): { [string]: any }
+local function resourceFallback(displayName: string, worldName: string, maxStack: number): ItemInfo
 	return {
-		FistWeapon = meleeFallback(),
+		kind = "resource",
+		display_name = displayName,
+		icon = "",
+		world_name = worldName,
+		max_stack = maxStack,
+	}
+end
+
+local function fallback(): { [string]: any }
+	local fists = meleeFallback()
+	local fistInfo: any = fists
+	fistInfo.max_stack = 1
+	return {
+		FistWeapon = fistInfo,
+		Stick = resourceFallback("Stick", "Stick", 99),
+		SmallRock = resourceFallback("Rock", "SmallRock", 99),
 	}
 end
 
@@ -102,6 +127,39 @@ local function asMelee(raw: any): MeleeStats?
 	return raw :: MeleeStats
 end
 
+local function asItemInfo(itemId: string, raw: any): ItemInfo?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local kind = raw.kind
+	if type(kind) ~= "string" or kind == "" then
+		kind = "resource"
+	end
+	local display = raw.display_name
+	if type(display) ~= "string" or display == "" then
+		display = itemId
+	end
+	local icon = raw.icon
+	if type(icon) ~= "string" then
+		icon = ""
+	end
+	local worldName = raw.world_name
+	if type(worldName) ~= "string" or worldName == "" then
+		worldName = itemId
+	end
+	local maxStack = tonumber(raw.max_stack)
+	if not maxStack or maxStack < 1 then
+		maxStack = if kind == "melee" then 1 else 99
+	end
+	return {
+		kind = kind,
+		display_name = display,
+		icon = icon,
+		world_name = worldName,
+		max_stack = math.floor(maxStack),
+	}
+end
+
 function ItemsConfig.Get(): { [string]: any }
 	if cached then
 		return cached
@@ -138,6 +196,70 @@ function ItemsConfig.Get(): { [string]: any }
 
 	cached = data
 	return cached
+end
+
+function ItemsConfig.GetItem(itemId: string): ItemInfo?
+	local all = ItemsConfig.Get()
+	local raw = all[itemId]
+	if raw == nil then
+		return nil
+	end
+	return asItemInfo(itemId, raw)
+end
+
+function ItemsConfig.IsKnown(itemId: string): boolean
+	return ItemsConfig.GetItem(itemId) ~= nil
+end
+
+function ItemsConfig.IsMelee(itemId: string): boolean
+	local info = ItemsConfig.GetItem(itemId)
+	return info ~= nil and info.kind == "melee"
+end
+
+function ItemsConfig.DisplayName(itemId: string): string
+	local info = ItemsConfig.GetItem(itemId)
+	if info then
+		return info.display_name
+	end
+	return itemId
+end
+
+function ItemsConfig.Icon(itemId: string): string
+	local info = ItemsConfig.GetItem(itemId)
+	if info and info.icon ~= "" then
+		return info.icon
+	end
+	return ""
+end
+
+function ItemsConfig.WorldName(itemId: string): string
+	local info = ItemsConfig.GetItem(itemId)
+	if info and info.world_name and info.world_name ~= "" then
+		return info.world_name
+	end
+	return itemId
+end
+
+function ItemsConfig.MaxStack(itemId: string): number
+	local info = ItemsConfig.GetItem(itemId)
+	if info then
+		return math.max(1, info.max_stack)
+	end
+	return 1
+end
+
+function ItemsConfig.ItemIdFromWorldName(worldName: string): string?
+	local all = ItemsConfig.Get()
+	for itemId, raw in pairs(all) do
+		local info = asItemInfo(itemId, raw)
+		if info and info.world_name == worldName then
+			return itemId
+		end
+	end
+	if ItemsConfig.IsKnown(worldName) then
+		return worldName
+	end
+	return nil
 end
 
 -- Статы melee-предмета по ItemId (FistWeapon, FistWeapon_gold, ...).

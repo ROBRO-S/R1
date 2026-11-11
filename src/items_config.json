@@ -1,7 +1,9 @@
 {
   "FistWeapon": {
     "kind": "melee",
-    "display_name": "Fists",
+    "display_name": "Fist Weapon",
+    "icon": "",
+    "max_stack": 1,
     "combo_reset": 1.3,
     "attack_cooldown": 0.38,
     "finish_cooldown": 0.8,
@@ -10,5 +12,19 @@
     "hitbox": [4.5, 4.5, 4.5],
     "knockback": 40,
     "block_dot": 0.2
+  },
+  "Stick": {
+    "kind": "resource",
+    "display_name": "Stick",
+    "icon": "",
+    "world_name": "Stick",
+    "max_stack": 99
+  },
+  "SmallRock": {
+    "kind": "resource",
+    "display_name": "Rock",
+    "icon": "",
+    "world_name": "SmallRock",
+    "max_stack": 99
   }
 }

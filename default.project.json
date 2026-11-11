@@ -28,6 +28,16 @@
 
       "items_config": {
         "$path": "src/items_config.json"
+      },
+
+      "Shared": {
+        "$className": "Folder",
+        "ItemCatalog": {
+          "$path": "src/shared/ItemCatalog.module.luau"
+        },
+        "ItemIcon": {
+          "$path": "src/shared/ItemIcon.module.luau"
+        }
       }
     },
 
@@ -50,12 +60,20 @@
         "$path": "src/server/scripts/ItemsConfig.module.luau"
       },
 
+      "InventoryService": {
+        "$path": "src/server/scripts/InventoryService.module.luau"
+      },
+
       "Main": {
         "$path": "src/server/scripts/Main.server.lua"
       },
 
       "FistWeapon": {
         "$path": "src/server/scripts/FistWeapon.server.lua"
+      },
+
+      "WorldLoot": {
+        "$path": "src/server/scripts/WorldLoot.server.lua"
       }
     },
 

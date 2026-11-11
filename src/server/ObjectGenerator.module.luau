@@ -674,7 +674,23 @@ function ObjectGenerator.Generate()
         return model, footprint, spot.x, spot.z, spot.moved
     end
 
-    local function spawnPart(template, x, z, rot, color, occupyRadius)
+    -- Поворот только по yaw, «верх» вдоль нормали земли — без случайного крена.
+    local function yawOnNormal(normal, yaw)
+        local up = normal.Unit
+        local axis = Vector3.yAxis
+        if math.abs(up:Dot(axis)) > 0.98 then
+            axis = Vector3.xAxis
+        end
+        local right = up:Cross(axis)
+        if right.Magnitude < 1e-4 then
+            right = up:Cross(Vector3.zAxis)
+        end
+        right = right.Unit
+        local forward = right:Cross(up).Unit
+        return CFrame.fromMatrix(Vector3.zero, right, up, -forward) * CFrame.Angles(0, yaw, 0)
+    end
+
+    local function spawnPart(template, x, z, rot, color, occupyRadius, alignGround)
         if not template or not template:IsA("BasePart") then
             return nil
         end
@@ -694,11 +710,16 @@ function ObjectGenerator.Generate()
             groundY = anchorY(spot.x, spot.z, spot.info.padY)
         end
 
+        local placeRot = rot
+        if alignGround then
+            placeRot = yawOnNormal(spot.info.hit.Normal, math.random() * math.pi * 2)
+        end
+
         local part = template:Clone()
         part.Color = color
         part.Transparency = props.rock_transparency
         part.Parent = workspace
-        if not seatInstance(part, spot.x, spot.z, rot, groundY, false) then
+        if not seatInstance(part, spot.x, spot.z, placeRot, groundY, false) then
             part:Destroy()
             return nil
         end
@@ -909,8 +930,16 @@ function ObjectGenerator.Generate()
                             -- 4. МЕЛКИЕ КАМНИ. Порог строго выше веток.
                             -- SmallRock — UnionOperation, ScaleTo к нему не применяется.
                             elseif rand < spawn.small_rock then
-                                local rot = CFrame.Angles(0, math.random() * math.pi * 2, 0)
-                                local part, moved = spawnPart(SmallRockTemplate, worldX, worldZ, rot, smallRockColor, smallRockRadius)
+                                -- Мелкий камень: без крена, плоско к земле (нормаль).
+                                local part, moved = spawnPart(
+                                    SmallRockTemplate,
+                                    worldX,
+                                    worldZ,
+                                    CFrame.identity,
+                                    smallRockColor,
+                                    smallRockRadius,
+                                    true
+                                )
                                 if part then
                                     RockCount += 1
                                     noteMove(moved)
@@ -922,7 +951,7 @@ function ObjectGenerator.Generate()
                                 local rotX = math.rad(math.random(-props.boulder_tilt, props.boulder_tilt))
                                 local rotY = math.random() * math.pi * 2
                                 local rot = CFrame.Angles(rotX, rotY, 0)
-                                local part, moved = spawnPart(MediumRockTemplate, worldX, worldZ, rot, boulderColor, boulderRadius)
+                                local part, moved = spawnPart(MediumRockTemplate, worldX, worldZ, rot, boulderColor, boulderRadius, false)
                                 if part then
                                     BoulderCount += 1
                                     noteMove(moved)
