@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 ResourceRespawnManager.MEGA_TREE_RESPAWN_TIME = 90
+ResourceRespawnManager.MEDIUM_ROCK_RESPAWN_TIME = 60
 ResourceRespawnManager.STICK_RESPAWN_TIME = 30
 
 local TICK_INTERVAL = 2
@@ -20,13 +21,16 @@ local EMERGE_TIME = 0.8
 local FREE_SPOT_ATTEMPTS = 24
 local FREE_SPOT_RADIUS = 80
 local DEFAULT_MEGA_HP = 75
+local DEFAULT_ROCK_HP = 60
 local DEFAULT_MEGA_RADIUS = 9
+local DEFAULT_BOULDER_RADIUS = 3.5
 local DEFAULT_EXCLUSION = 4
 local DEFAULT_LIFT = -2
 local DEFAULT_SCALE = 1
 local DEFAULT_RAY_START = 200
 local DEFAULT_RAY_DEPTH = 300
 local DEFAULT_WATER_Y = 6
+local DEFAULT_BOULDER_COLOR = Color3.fromRGB(80, 80, 80)
 
 type QueueEntry = {
 	assetName: string,
@@ -64,6 +68,25 @@ local function megaTreeMaxHp(): number
 		return hp
 	end
 	return DEFAULT_MEGA_HP
+end
+
+local function mediumRockMaxHp(): number
+	local _, props = configProps()
+	local hp = props.medium_rock_hp
+	if typeof(hp) == "number" and hp >= 1 then
+		return hp
+	end
+	return DEFAULT_ROCK_HP
+end
+
+local function colorFrom(raw: any, fallback: Color3): Color3
+	if type(raw) == "table" then
+		local r = tonumber(raw[1]) or 80
+		local g = tonumber(raw[2]) or 80
+		local b = tonumber(raw[3]) or 80
+		return Color3.fromRGB(r, g, b)
+	end
+	return fallback
 end
 
 local function flatDist(a: Vector3, b: Vector3): number
@@ -349,11 +372,116 @@ local function spawnMegaTree(origin: CFrame): boolean
 	return true
 end
 
+local function seatPartOnGround(part: BasePart, position: Vector3, rot: CFrame)
+	local hit = groundHit(position.X, position.Z)
+	local ground = if hit then hit.Position else position
+	part.CFrame = CFrame.new(ground) * rot
+	local cf = part.CFrame
+	local size = part.Size
+	local minY = math.huge
+	for _, sx in { -0.5, 0.5 } do
+		for _, sy in { -0.5, 0.5 } do
+			for _, sz in { -0.5, 0.5 } do
+				local p = cf:PointToWorldSpace(Vector3.new(size.X * sx, size.Y * sy, size.Z * sz))
+				minY = math.min(minY, p.Y)
+			end
+		end
+	end
+	part.CFrame = part.CFrame + Vector3.new(0, ground.Y - minY, 0)
+end
+
+local function tweenEmergePart(part: BasePart, finalCF: CFrame)
+	part.CanCollide = false
+	local buried = finalCF - Vector3.new(0, EMERGE_STUDS, 0)
+	part.CFrame = buried
+	local alpha = Instance.new("NumberValue")
+	alpha.Value = 0
+	TweenService:Create(
+		alpha,
+		TweenInfo.new(EMERGE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Value = 1 }
+	):Play()
+	local t0 = os.clock()
+	while part.Parent and os.clock() - t0 < EMERGE_TIME + 0.35 do
+		local t = alpha.Value
+		part.CFrame = buried:Lerp(finalCF, t)
+		if t >= 0.999 then
+			break
+		end
+		RunService.Heartbeat:Wait()
+	end
+	alpha:Destroy()
+	if part.Parent then
+		part.CFrame = finalCF
+		part.CanCollide = true
+		part.CanQuery = true
+	end
+end
+
+local function spawnMediumRock(origin: CFrame): boolean
+	local assets = ReplicatedStorage:FindFirstChild("assets")
+	local template = assets and assets:FindFirstChild("MediumRock")
+	if not (template and template:IsA("BasePart")) then
+		warn("ResourceRespawnManager: нет assets.MediumRock")
+		return false
+	end
+
+	local _, props = configProps()
+	local needRadius = DEFAULT_BOULDER_RADIUS
+	if typeof(props.boulder_radius) == "number" then
+		needRadius = props.boulder_radius
+	end
+	local color = colorFrom(props.boulder_color, DEFAULT_BOULDER_COLOR)
+	local transparency = if typeof(props.rock_transparency) == "number" then props.rock_transparency else 0
+
+	local x, z, foundFree = pickSpawnXZ(origin, needRadius)
+	local hit = groundHit(x, z)
+	local groundY = if hit then hit.Position.Y else origin.Position.Y
+	local spawnPos = Vector3.new(x, groundY, z)
+	if playersNear(spawnPos, PLAYER_CLEAR_RADIUS) then
+		return false
+	end
+
+	local part = template:Clone()
+	part.Name = "MediumRock"
+	part.Color = color
+	part.Transparency = transparency
+	part.CanCollide = true
+	part.CanQuery = true
+	part:SetAttribute("HP", mediumRockMaxHp())
+	part:SetAttribute("PickaxeMineBusy", nil)
+	part.Parent = Workspace
+
+	local yaw = if foundFree then math.random() * math.pi * 2 else select(2, origin:ToOrientation())
+	local tilt = if typeof(props.boulder_tilt) == "number" then props.boulder_tilt else 0
+	local rotX = if tilt > 0 then math.rad(math.random(-tilt, tilt)) else 0
+	seatPartOnGround(part, spawnPos, CFrame.Angles(rotX, yaw, 0))
+	anchorAll(part)
+
+	local finalCF = part.CFrame
+	if playersNear(finalCF.Position, PLAYER_CLEAR_RADIUS) then
+		part:Destroy()
+		return false
+	end
+
+	tweenEmergePart(part, finalCF)
+	print(string.format(
+		"ResourceRespawnManager: MediumRock респавн%s (%.0f, %.0f)",
+		if foundFree then " на новом месте" else " на старом месте",
+		x,
+		z
+	))
+	return true
+end
+
 local function trySpawn(entry: QueueEntry): boolean
 	if entry.assetName == "MegaTree" then
 		return spawnMegaTree(entry.originCFrame)
 	end
-	-- Позже: Stick / SmallRock / MediumRock.
+	if entry.assetName == "MediumRock" then
+		return spawnMediumRock(entry.originCFrame)
+	end
+	-- Позже: Stick / SmallRock.
 	warn("ResourceRespawnManager: неизвестный ассет", entry.assetName)
 	return true
 end

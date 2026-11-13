@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 local ItemsConfig = require(ServerScriptService:WaitForChild("ItemsConfig"))
 local InventoryService = require(ServerScriptService:WaitForChild("InventoryService"))
 local ResourceRespawnManager = require(ServerScriptService:WaitForChild("ResourceRespawnManager"))
+local ToolHints = require(ServerScriptService:WaitForChild("ToolHints"))
 
 local TOOL_NAME = "Axe"
 local ITEM_ID = "Axe"
@@ -353,6 +354,58 @@ local function findAnyTreeAncestor(inst: Instance?): Model?
 	return nil
 end
 
+local function findMediumRockAncestor(inst: Instance?): BasePart?
+	local node: Instance? = inst
+	while node and node ~= Workspace do
+		if node:IsA("BasePart") and node.Name == "MediumRock" then
+			return node
+		end
+		node = node.Parent
+	end
+	return nil
+end
+
+local function closestPointOnPart(part: BasePart, worldPos: Vector3): (number, Vector3)
+	local localPos = part.CFrame:PointToObjectSpace(worldPos)
+	local half = part.Size * 0.5
+	local clamped = Vector3.new(
+		math.clamp(localPos.X, -half.X, half.X),
+		math.clamp(localPos.Y, -half.Y, half.Y),
+		math.clamp(localPos.Z, -half.Z, half.Z)
+	)
+	local world = part.CFrame:PointToWorldSpace(clamped)
+	return (world - worldPos).Magnitude, world
+end
+
+local function hintWrongRock(player: Player, attackerRoot: BasePart, character: Model)
+	local rockRange = 10
+	local box = Vector3.new(14, 12, 14)
+	local hitCFrame = attackerRoot.CFrame * CFrame.new(0, 2, -(box.Z * 0.35))
+	local overlap = OverlapParams.new()
+	overlap.FilterType = Enum.RaycastFilterType.Exclude
+	overlap.FilterDescendantsInstances = { character }
+	overlap.RespectCanCollide = false
+	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, box, overlap)) do
+		local rock = findMediumRockAncestor(part)
+		if rock then
+			local dist = closestPointOnPart(rock, attackerRoot.Position)
+			if dist <= rockRange then
+				ToolHints.NeedPickaxe(player)
+				return
+			end
+		end
+	end
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child:IsA("BasePart") and child.Name == "MediumRock" then
+			local dist, closest = closestPointOnPart(child, attackerRoot.Position)
+			if dist <= rockRange and inFront(attackerRoot, closest, -0.25) then
+				ToolHints.NeedPickaxe(player)
+				return
+			end
+		end
+	end
+end
+
 local function hitMegaTree(attackerRoot: BasePart, character: Model, treeDamage: number): boolean
 	local best: Model? = nil
 	local bestDist = TREE_HIT_RANGE
@@ -447,6 +500,8 @@ local function resolveAxeHit(player: Player, mobDamage: number, treeDamage: numb
 		return
 	end
 
+	hintWrongRock(player, attackerRoot, character)
+
 	local hitMob = hitDummy(attackerRoot, mobDamage)
 	local hitTree = hitMegaTree(attackerRoot, character, treeDamage)
 	if not hitMob and not hitTree then
@@ -460,6 +515,7 @@ function AxeCombat.Start()
 	end
 	started = true
 
+	ToolHints.Start()
 	ResourceRespawnManager.Start()
 
 	local attackRemote = InventoryService.EnsureRemote("AxeAttack")

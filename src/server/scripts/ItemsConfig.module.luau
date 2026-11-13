@@ -20,6 +20,10 @@ export type MeleeStats = {
 	damages: { number },
 	-- Урон по MegaTree (если нет — берём damages[1]). Разные топоры = разный tree_damage.
 	tree_damage: number?,
+	-- Урон по MediumRock (кирка). Если нет — damages[1].
+	rock_damage: number?,
+	-- Клиентская анимация удара (rbxassetid://…).
+	swing_animation: string?,
 	hitbox: { number },
 	knockback: number,
 	block_dot: number,
@@ -80,6 +84,24 @@ local function axeMeleeFallback(): MeleeStats
 	}
 end
 
+local function pickaxeMeleeFallback(): MeleeStats
+	return {
+		kind = "melee",
+		display_name = "Pickaxe",
+		icon = "",
+		swing_animation = "rbxassetid://117674721132335",
+		combo_reset = 0.55,
+		attack_cooldown = 0.55,
+		finish_cooldown = 0.55,
+		hit_delays = { 0.20 },
+		damages = { 8 },
+		rock_damage = 15,
+		hitbox = { 10, 20, 10 },
+		knockback = 0,
+		block_dot = 0.2,
+	}
+end
+
 local function fallback(): { [string]: any }
 	local fists = meleeFallback()
 	local fistInfo: any = fists
@@ -88,9 +110,14 @@ local function fallback(): { [string]: any }
 	local axeInfo: any = axe
 	axeInfo.max_stack = 1
 	axeInfo.world_name = "Axe"
+	local pickaxe = pickaxeMeleeFallback()
+	local pickaxeInfo: any = pickaxe
+	pickaxeInfo.max_stack = 1
+	pickaxeInfo.world_name = "Pickaxe"
 	return {
 		FistWeapon = fistInfo,
 		Axe = axeInfo,
+		Pickaxe = pickaxeInfo,
 		Stick = resourceFallback("Stick", "Stick", 99),
 		SmallRock = resourceFallback("Rock", "SmallRock", 99),
 	}
@@ -126,12 +153,24 @@ local function readConfig(inst: Instance): (boolean, any)
 	return false, "items_config должен быть StringValue, пришло " .. inst.ClassName
 end
 
+local function isArrayLike(t: { [any]: any }): boolean
+	local n = 0
+	for key in t do
+		if typeof(key) ~= "number" then
+			return false
+		end
+		n += 1
+	end
+	return n > 0
+end
+
 local function fillMissing(data: { [any]: any }, backup: { [any]: any })
 	for key, value in backup do
 		if type(value) == "table" then
 			if type(data[key]) ~= "table" then
 				data[key] = value
-			else
+			elseif not isArrayLike(value) and not isArrayLike(data[key]) then
+				-- Не дополняем JSON-массивы (hit_delays/damages) индексами из другого оружия.
 				fillMissing(data[key], value)
 			end
 		elseif data[key] == nil then
@@ -145,8 +184,13 @@ local function asMelee(raw: any): MeleeStats?
 	if type(raw) ~= "table" then
 		return nil
 	end
+	-- Только скалярные поля; массивы damages/hit_delays/hitbox не трогаем.
 	local base = meleeFallback()
-	fillMissing(raw, base)
+	for key, value in base do
+		if raw[key] == nil and type(value) ~= "table" then
+			raw[key] = value
+		end
+	end
 	if type(raw.damages) ~= "table" or type(raw.hit_delays) ~= "table" or type(raw.hitbox) ~= "table" then
 		return nil
 	end
@@ -335,6 +379,27 @@ function ItemsConfig.TreeDamage(stats: MeleeStats): number
 		return d
 	end
 	return 15
+end
+
+-- Урон кирки по MediumRock. Нет rock_damage → damages[1].
+function ItemsConfig.RockDamage(stats: MeleeStats): number
+	local rd = (stats :: any).rock_damage
+	if typeof(rd) == "number" and rd > 0 then
+		return rd
+	end
+	local d = stats.damages[1]
+	if typeof(d) == "number" and d > 0 then
+		return d
+	end
+	return 15
+end
+
+function ItemsConfig.SwingAnimation(stats: MeleeStats): string
+	local anim = (stats :: any).swing_animation
+	if typeof(anim) == "string" and anim ~= "" then
+		return anim
+	end
+	return ""
 end
 
 return ItemsConfig

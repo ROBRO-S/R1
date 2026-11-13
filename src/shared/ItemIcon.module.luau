@@ -77,9 +77,9 @@ local function makeFistPart(): BasePart
 	return part
 end
 
-local function makeAxePart(): BasePart
+local function makeToolPart(assetName: string, previewName: string): BasePart
 	local assets = assetsFolder()
-	local template = assets and assets:FindFirstChild("Axe")
+	local template = assets and assets:FindFirstChild(assetName)
 	if template and template:IsA("BasePart") then
 		local clone = template:Clone()
 		prepareClone(clone)
@@ -96,7 +96,7 @@ local function makeAxePart(): BasePart
 		end
 	end
 	local part = Instance.new("Part")
-	part.Name = "AxePreview"
+	part.Name = previewName
 	part.Size = Vector3.new(0.35, 2.2, 0.7)
 	part.Color = Color3.fromRGB(120, 90, 55)
 	part.Material = Enum.Material.Wood
@@ -112,7 +112,9 @@ local function previewPartFor(itemId: string): BasePart?
 	elseif itemId == "FistWeapon" then
 		return makeFistPart()
 	elseif itemId == "Axe" then
-		return makeAxePart()
+		return makeToolPart("Axe", "AxePreview")
+	elseif itemId == "Pickaxe" then
+		return makeToolPart("Pickaxe", "PickaxePreview")
 	end
 	return nil
 end

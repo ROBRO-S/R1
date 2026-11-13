@@ -21,6 +21,7 @@ local PICKABLE_NAMES: { [string]: string } = {
 	SmallRock = "SmallRock",
 	FistWeapon = "FistWeapon",
 	Axe = "Axe",
+	Pickaxe = "Pickaxe",
 }
 
 local stickColor = Color3.fromRGB(120, 85, 50)
@@ -173,14 +174,14 @@ local function makeFistDropAt(position: Vector3): Instance
 	return part
 end
 
-local function makeAxeDropAt(position: Vector3): Instance
+local function makeToolDropAt(itemId: string, assetName: string, position: Vector3): Instance
 	local assets = assetsFolder()
-	local template = assets and assets:FindFirstChild("Axe")
+	local template = assets and assets:FindFirstChild(assetName)
 	local yaw = math.random() * math.pi * 2
 	local rot = CFrame.Angles(0, yaw, math.rad(90))
 	if template and template:IsA("BasePart") then
 		local part = template:Clone()
-		part.Name = "Axe"
+		part.Name = itemId
 		part.Transparency = 0
 		part.CanCollide = false
 		part.Massless = true
@@ -191,7 +192,7 @@ local function makeAxeDropAt(position: Vector3): Instance
 	end
 	if template and template:IsA("Model") then
 		local model = template:Clone()
-		model.Name = "Axe"
+		model.Name = itemId
 		local host = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 		model.Parent = Workspace
 		if host then
@@ -201,7 +202,7 @@ local function makeAxeDropAt(position: Vector3): Instance
 		return model
 	end
 	local part = Instance.new("Part")
-	part.Name = "Axe"
+	part.Name = itemId
 	part.Size = Vector3.new(0.35, 2.2, 0.7)
 	part.Color = Color3.fromRGB(120, 90, 55)
 	part.Material = Enum.Material.Wood
@@ -220,7 +221,9 @@ local function spawnWorldItem(itemId: string, position: Vector3): Instance?
 	elseif itemId == "FistWeapon" then
 		return makeFistDropAt(position)
 	elseif itemId == "Axe" then
-		return makeAxeDropAt(position)
+		return makeToolDropAt("Axe", "Axe", position)
+	elseif itemId == "Pickaxe" then
+		return makeToolDropAt("Pickaxe", "Pickaxe", position)
 	end
 	local part = Instance.new("Part")
 	part.Name = ItemsConfig.WorldName(itemId)
@@ -360,4 +363,4 @@ Workspace.ChildAdded:Connect(function(child)
 	task.defer(trySetup, child)
 end)
 
-print("WorldLoot: готов (Stick / SmallRock / FistWeapon / Axe / дроп)")
+print("WorldLoot: готов (Stick / SmallRock / FistWeapon / Axe / Pickaxe / дроп)")

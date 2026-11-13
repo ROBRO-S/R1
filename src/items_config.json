@@ -29,6 +29,23 @@
     "knockback": 0,
     "block_dot": 0.2
   },
+  "Pickaxe": {
+    "kind": "melee",
+    "display_name": "Pickaxe",
+    "icon": "",
+    "world_name": "Pickaxe",
+    "max_stack": 1,
+    "swing_animation": "rbxassetid://117674721132335",
+    "combo_reset": 0.55,
+    "attack_cooldown": 0.55,
+    "finish_cooldown": 0.55,
+    "hit_delays": [0.20],
+    "damages": [8],
+    "rock_damage": 15,
+    "hitbox": [10, 20, 10],
+    "knockback": 0,
+    "block_dot": 0.2
+  },
   "Stick": {
     "kind": "resource",
     "display_name": "Stick",

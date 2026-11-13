@@ -66,6 +66,7 @@
     "mega_tree_scale": 1,
     "mega_tree_lift": -2,
     "mega_tree_hp": 75,
+    "medium_rock_hp": 60,
     "soil_size": 1,
     "soil_transparency": 1,
     "stick_size": [2.4, 0.6, 0.6],

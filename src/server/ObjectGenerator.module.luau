@@ -963,6 +963,12 @@ function ObjectGenerator.Generate()
                                 local rot = CFrame.Angles(rotX, rotY, 0)
                                 local part, moved = spawnPart(MediumRockTemplate, worldX, worldZ, rot, boulderColor, boulderRadius, false)
                                 if part then
+                                    part.Name = "MediumRock"
+                                    local rockHp = props.medium_rock_hp
+                                    if typeof(rockHp) ~= "number" or rockHp < 1 then
+                                        rockHp = 60
+                                    end
+                                    part:SetAttribute("HP", rockHp)
                                     BoulderCount += 1
                                     noteMove(moved)
                                 end

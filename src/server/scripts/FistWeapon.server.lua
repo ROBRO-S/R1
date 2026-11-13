@@ -12,7 +12,7 @@ local ItemsConfig = require(ServerScriptService:WaitForChild("ItemsConfig"))
 local InventoryService = require(ServerScriptService:WaitForChild("InventoryService"))
 type MeleeStats = ItemsConfig.MeleeStats
 
--- Топор: remote + хит логика (на случай если AxeCombatBoot не поднялся).
+-- Топор / кирка: remote + хит логика (boot-скрипты могли не подняться в Studio).
 do
 	local ok, axe = pcall(function()
 		return require(ServerScriptService:WaitForChild("AxeCombat", 10))
@@ -22,6 +22,27 @@ do
 	else
 		warn("FistWeapon: не смог Start AxeCombat:", axe)
 		InventoryService.EnsureRemote("AxeAttack")
+	end
+end
+do
+	local ok, pickaxe = pcall(function()
+		return require(ServerScriptService:WaitForChild("PickaxeCombat", 10))
+	end)
+	if ok and type(pickaxe) == "table" and type(pickaxe.Start) == "function" then
+		pickaxe.Start()
+	else
+		warn("FistWeapon: не смог Start PickaxeCombat:", pickaxe)
+		InventoryService.EnsureRemote("PickaxeAttack")
+	end
+end
+do
+	local ok, hints = pcall(function()
+		return require(ServerScriptService:WaitForChild("ToolHints", 10))
+	end)
+	if ok and type(hints) == "table" and type(hints.Start) == "function" then
+		hints.Start()
+	else
+		InventoryService.EnsureRemote("ToolHint")
 	end
 end
 
@@ -48,6 +69,12 @@ local ATTR_ITEM = InventoryService.AttrItem()
 local ATTR_COMBO_RESET = "ComboReset"
 local ATTR_ATTACK_CD = "AttackCooldown"
 local ATTR_FINISH_CD = "FinishCooldown"
+local ATTR_SWING_ANIM = "SwingAnimation"
+
+local ToolHints: any = nil
+pcall(function()
+	ToolHints = require(ServerScriptService:WaitForChild("ToolHints", 10))
+end)
 
 local function anglesFromDeg(rot: Vector3): CFrame
 	return CFrame.Angles(math.rad(rot.X), math.rad(rot.Y), math.rad(rot.Z))
@@ -225,6 +252,10 @@ local function applyCombatAttrs(tool: Tool, stats: MeleeStats)
 	tool:SetAttribute(ATTR_COMBO_RESET, stats.combo_reset)
 	tool:SetAttribute(ATTR_ATTACK_CD, stats.attack_cooldown)
 	tool:SetAttribute(ATTR_FINISH_CD, stats.finish_cooldown)
+	local swing = ItemsConfig.SwingAnimation(stats)
+	if swing ~= "" then
+		tool:SetAttribute(ATTR_SWING_ANIM, swing)
+	end
 	if stats.display_name ~= "" then
 		tool.ToolTip = stats.display_name
 	end
@@ -274,7 +305,21 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 	overlap.RespectCanCollide = false
 
 	local hitHumanoids: { [Humanoid]: boolean } = {}
+	local sawMegaTree = false
+	local sawMediumRock = false
 	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, hitbox, overlap)) do
+		if part.Name == "MediumRock" or (part.Parent and part.Parent.Name == "MediumRock") then
+			sawMediumRock = true
+		end
+		local treeNode: Instance? = part
+		while treeNode and treeNode ~= Workspace do
+			if treeNode:IsA("Model") and treeNode.Name == "MegaTree" then
+				sawMegaTree = true
+				break
+			end
+			treeNode = treeNode.Parent
+		end
+
 		local model = part:FindFirstAncestorOfClass("Model")
 		if model and model ~= character then
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -297,6 +342,18 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 				if step >= comboLength and not blocked and targetRoot then
 					applyKnockback(attackerRoot, targetRoot, stats.knockback)
 				end
+			end
+		end
+	end
+
+	-- Кулаки не рубят деревья и не долбят скалы — только подсказка.
+	if ToolHints then
+		local player = Players:GetPlayerFromCharacter(character)
+		if player then
+			if sawMegaTree then
+				ToolHints.NeedAxe(player)
+			elseif sawMediumRock then
+				ToolHints.NeedPickaxe(player)
 			end
 		end
 	end
@@ -521,8 +578,13 @@ local function createHeldTool(itemId: string): Tool
 			handle.Material = Enum.Material.Slate
 		end
 		tool.Grip = CFrame.new(0, -0.12, -0.25)
-	elseif itemId == "Axe" then
-		-- Невидимый Handle (Grip) + видимый AxeVisual, всегда в правой руке.
+	elseif itemId == "Axe" or itemId == "Pickaxe" then
+		-- Невидимый Handle (Grip) + видимый меш, всегда в правой руке.
+		local assetName = itemId
+		local visualName = itemId .. "Visual"
+		local weldName = itemId .. "RightWeld"
+		local formatAttr = itemId .. "VisualFormat"
+
 		handle = Instance.new("Part")
 		handle.Name = "Handle"
 		handle.Size = Vector3.new(0.2, 0.2, 0.2)
@@ -535,7 +597,7 @@ local function createHeldTool(itemId: string): Tool
 
 		local visual: BasePart? = nil
 		local assets = ReplicatedStorage:FindFirstChild("assets")
-		local template = assets and assets:FindFirstChild("Axe")
+		local template = assets and assets:FindFirstChild(assetName)
 		if template and template:IsA("BasePart") then
 			visual = template:Clone()
 		elseif template and template:IsA("Model") then
@@ -549,23 +611,29 @@ local function createHeldTool(itemId: string): Tool
 			visual.Size = Vector3.new(0.35, 2.2, 0.7)
 			visual.Color = Color3.fromRGB(120, 90, 55)
 			visual.Material = Enum.Material.Wood
-			warn("FistWeapon: нет assets.Axe — временный Part")
+			warn("FistWeapon: нет assets." .. assetName .. " — временный Part")
 		end
-		visual.Name = "AxeVisual"
+		visual.Name = visualName
 		visual.Transparency = 0
 		prepareHandlePart(visual)
 		visual.Parent = tool
 		local weld = Instance.new("Weld")
-		weld.Name = "AxeRightWeld"
+		weld.Name = weldName
 		weld.Part0 = handle
 		weld.Part1 = visual
 		weld.C0 = CFrame.new()
 		weld.C1 = CFrame.new()
 		weld.Parent = visual
-		tool:SetAttribute("AxeVisualFormat", 2)
+		local formatVersion = if itemId == "Pickaxe" then 3 else 2
+		tool:SetAttribute(formatAttr, formatVersion)
 		tool.ManualActivationOnly = false
-		-- Grip уже отшлифован — не менять без просьбы.
-		tool.Grip = CFrame.new(-0.3, -0.9, 0) * CFrame.Angles(0, math.rad(-90), 0)
+		if itemId == "Pickaxe" then
+			-- Grip отшлифован — не менять без просьбы.
+			tool.Grip = CFrame.new(0, -0.9, -0.3)
+		else
+			-- Axe Grip отшлифован — не менять без просьбы.
+			tool.Grip = CFrame.new(-0.3, -0.9, 0) * CFrame.Angles(0, math.rad(-90), 0)
+		end
 	else
 		handle = Instance.new("Part")
 		handle.Size = Vector3.new(0.7, 0.7, 0.7)
@@ -638,10 +706,11 @@ local function ensureTools(player: Player)
 			return tool:GetAttribute(ATTR_SLOT) == slot
 		end)
 		if existing then
-			-- Только совсем старый Axe (без метки формата).
-			local needsAxeRebuild = itemId == "Axe"
-				and existing:GetAttribute("AxeVisualFormat") ~= 2
-			if needsAxeRebuild then
+			-- Старый Axe/Pickaxe без актуальной метки формата — пересобрать визуал.
+			local expectedFormat = if itemId == "Pickaxe" then 3 elseif itemId == "Axe" then 2 else nil
+			local needsToolRebuild = expectedFormat ~= nil
+				and existing:GetAttribute(itemId .. "VisualFormat") ~= expectedFormat
+			if needsToolRebuild then
 				local character = player.Character
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				if humanoid and existing.Parent == character then

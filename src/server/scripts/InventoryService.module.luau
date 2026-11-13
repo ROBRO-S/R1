@@ -172,10 +172,11 @@ function InventoryService.WriteState(player: Player)
 end
 
 local function defaultSlots(): { [number]: SlotStack }
-	-- Слот 2: Axe для проверки экипа/дропа (анимации топора позже).
+	-- Слоты 2–3: Axe / Pickaxe для проверки экипа/дропа (бой/добыча позже).
 	return {
 		[1] = makeStack(DEFAULT_ITEM, 1),
 		[2] = makeStack("Axe", 1),
+		[3] = makeStack("Pickaxe", 1),
 	}
 end
 
@@ -500,8 +501,10 @@ end
 
 local dropRemote = ensureRemote("DropSlot")
 local moveRemote = ensureRemote("MoveSlot")
--- AxeAttack создаём здесь заранее: клиент не должен ждать отдельный Script.
+-- Combat remotes заранее: клиент не должен ждать отдельный Script.
 ensureRemote("AxeAttack")
+ensureRemote("PickaxeAttack")
+ensureRemote("ToolHint")
 ensureRemote("EquipSlot")
 ensureRemote("FistBlock")
 ensureRemote("FistAttack")

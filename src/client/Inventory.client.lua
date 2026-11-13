@@ -26,6 +26,7 @@ local SELECTED = Color3.fromRGB(255, 236, 170)
 local FALLBACK_NAMES: { [string]: string } = {
 	FistWeapon = "Fist Weapon",
 	Axe = "Axe",
+	Pickaxe = "Pickaxe",
 	Stick = "Stick",
 	SmallRock = "Rock",
 }

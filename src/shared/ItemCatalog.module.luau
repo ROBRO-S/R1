@@ -17,6 +17,7 @@ local cached: { [string]: ItemInfo }? = nil
 local FALLBACK: { [string]: ItemInfo } = {
 	FistWeapon = { kind = "melee", display_name = "Fist Weapon", icon = "" },
 	Axe = { kind = "melee", display_name = "Axe", icon = "" },
+	Pickaxe = { kind = "melee", display_name = "Pickaxe", icon = "" },
 	Stick = { kind = "resource", display_name = "Stick", icon = "" },
 	SmallRock = { kind = "resource", display_name = "Rock", icon = "" },
 }

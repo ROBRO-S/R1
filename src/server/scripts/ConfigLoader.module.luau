@@ -109,6 +109,8 @@ local function fallback()
 			mega_tree_lift = -2,
 			-- Прочность MegaTree для рубки топором (AxeCombat). Удары ≈ hp / tree_damage топора.
 			mega_tree_hp = 75,
+			-- Прочность MediumRock для кирки (PickaxeCombat). Удары ≈ hp / rock_damage.
+			medium_rock_hp = 60,
 			soil_size = 1,
 			soil_transparency = 1,
 			stick_size = { 2.4, 0.6, 0.6 },
