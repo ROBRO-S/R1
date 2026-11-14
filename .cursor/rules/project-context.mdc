@@ -15,64 +15,83 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 |---|---|---|
 | `src/server/scripts/Main.server.lua` | `ServerScriptService.Main` (Script) | Старт: флаг мира, генераторы, спавн после готовности, тестовый `TrainingDummy` |
 | `src/server/scripts/ConfigLoader.module.luau` | `ServerScriptService.ConfigLoader` | Чтение `biome_config`, fallback, пороги спавна |
-| `src/server/scripts/ItemsConfig.module.luau` | `ServerScriptService.ItemsConfig` | `items_config`: melee/resource, `GetItem` / `GetMelee` / `MaxStack` / `DisplayName` |
+| `src/server/scripts/ItemsConfig.module.luau` | `ServerScriptService.ItemsConfig` | `items_config`: melee/resource, `GetItem` / `GetMelee` / `TreeDamage` / `RockDamage` / `SwingAnimation` |
 | `src/server/scripts/InventoryService.module.luau` | `ServerScriptService.InventoryService` | Сессия слотов+стаков, `InvState`, DataStore, Add/Drop/Move, remotes |
-| `src/server/scripts/WorldLoot.server.lua` | `ServerScriptService.WorldLoot` | ProximityPrompt на Stick/SmallRock/дроп, спавн лута на земле |
+| `src/server/scripts/WorldLoot.server.lua` | `ServerScriptService.WorldLoot` | ProximityPrompt на Stick/SmallRock/FistWeapon/Axe/Pickaxe/дроп; `SpawnWorldLoot` |
 | `src/server/TerrainGenerator.module.luau` | `ServerScriptService.TerrainGenerator` | Воксельный рельеф и пруды |
-| `src/server/ObjectGenerator.module.luau` | `ServerScriptService.ObjectGenerator` | Деревья, ветки, камни |
-| `src/server/ResourceRespawnManager.module.luau` | `ServerScriptService.ResourceRespawnManager` | Очередь респавна (1/тик), MegaTree после рубки |
-| `src/server/scripts/FistWeapon.server.lua` | `ServerScriptService.FistWeapon` | Tool кастетов + held-Tool для ресурсов; weld-визуал; бой; экип |
-| `src/server/scripts/AxeCombat.module.luau` | `ServerScriptService.AxeCombat` | Топор: урон манекену, рубка MegaTree, вал + дроп Stick |
-| `src/biome_config.json` | `ReplicatedStorage.biome_config` (StringValue) | Все числа генерации. `syncRules.use = "text"` |
+| `src/server/ObjectGenerator.module.luau` | `ServerScriptService.ObjectGenerator` | Деревья, ветки, камни; MediumRock с атрибутом `HP` |
+| `src/server/ResourceRespawnManager.module.luau` | `ServerScriptService.ResourceRespawnManager` | Очередь респавна (1/тик): MegaTree 90с, MediumRock 60с |
+| `src/server/scripts/FistWeapon.server.lua` | `ServerScriptService.FistWeapon` | Tool кастетов + held-Tool (ресурсы/Axe/Pickaxe); weld; бой кулаков; экип; старт Axe/Pickaxe combat |
+| `src/server/scripts/AxeCombat.module.luau` | `ServerScriptService.AxeCombat` | Топор: манекен + рубка MegaTree, вал + дроп Stick; подсказка при ударе по скале |
+| `src/server/scripts/AxeCombat.server.lua` | `ServerScriptService.AxeCombatBoot` | Тонкий boot → `AxeCombat.Start()` |
+| `src/server/scripts/PickaxeCombat.module.luau` | `ServerScriptService.PickaxeCombat` | Кирка: манекен + добыча MediumRock, осколки + дроп SmallRock; подсказка при ударе по дереву |
+| `src/server/scripts/PickaxeCombat.server.lua` | `ServerScriptService.PickaxeCombatBoot` | Тонкий boot → `PickaxeCombat.Start()` |
+| `src/server/scripts/ToolHints.module.luau` | `ServerScriptService.ToolHints` | Англ. подсказки «не тот инструмент», антиспам 1.5с → remote `ToolHint` |
+| `src/biome_config.json` | `ReplicatedStorage.biome_config` (StringValue) | Числа генерации + `mega_tree_hp` / `medium_rock_hp`. `syncRules.use = "text"` |
 | `src/items_config.json` | `ReplicatedStorage.items_config` (StringValue) | Предметы: kind, display_name, icon, max_stack, melee-статы… |
 | `src/shared/ItemCatalog.module.luau` | `ReplicatedStorage.Shared.ItemCatalog` | Клиентское чтение имён/иконок из `items_config` |
 | `src/shared/ItemIcon.module.luau` | `ReplicatedStorage.Shared.ItemIcon` | Иконка слота: `rbxassetid` или ViewportFrame |
-| `src/assets/*.rbxm` | `ReplicatedStorage.assets` | `BigTree`, `MegaTree` (Model); `SmallRock`, `MediumRock` (Union); `fistweapon_A` (MeshPart) |
+| `src/assets/*.rbxm` | `ReplicatedStorage.assets` | `BigTree`, `MegaTree` (Model); `SmallRock`, `MediumRock` (Union); `fistweapon_A`, `Axe`, `Pickaxe` |
 | `item_icons/*.png` | не синкается | Исходники иконок для загрузки в Roblox → `icon` в JSON |
 | `src/client/Inventory.client.lua` | `StarterPlayerScripts.Inventory` | Хотбар 9 + рюкзак 20; стаки; G/drag дроп; toggle экипа |
 | `src/client/WorldItemHover.client.lua` | `StarterPlayerScripts.WorldItemHover` | Подсказка иконка+имя при наведении на лут |
 | `src/client/FistStance.client.lua` | `StarterPlayerScripts.FistStance` | Стойка/блок/комбо FistWeapon; ЛКМ атака, ПКМ блок |
+| `src/client/AxeCombat.client.lua` | `StarterPlayerScripts.AxeCombat` | Анимация удара топора + `AxeAttack` |
+| `src/client/PickaxeCombat.client.lua` | `StarterPlayerScripts.PickaxeCombat` | Анимация кирки из `SwingAnimation` / JSON + `PickaxeAttack` |
+| `src/client/ToolHint.client.lua` | `StarterPlayerScripts.ToolHint` | UI: `Use an Axe!` / `Use a Pickaxe!` |
 | `PROGRESS.md` | не синкается | Заметки по балансу, не код |
 | `docs/`, `GDD.md`, `README.md` | не синкаются | Дизайн. Геймплей оттуда не считать сделанным |
 
-`require` идёт по инстансам в `ServerScriptService` / `ReplicatedStorage`, не по папкам на диске: `Main` → `SSS.TerrainGenerator`, бой → `SSS.ItemsConfig` / `SSS.InventoryService`, клиент → `ReplicatedStorage.Shared.ItemCatalog`.
+`require` идёт по инстансам в `ServerScriptService` / `ReplicatedStorage`, не по папкам на диске: `Main` → `SSS.TerrainGenerator`, бой → `SSS.ItemsConfig` / `SSS.InventoryService` / `SSS.AxeCombat` / `SSS.PickaxeCombat`, клиент → `ReplicatedStorage.Shared.ItemCatalog`.
 
-Рантайм (создаёт сервер, в Git нет): `ReplicatedStorage.Remotes` (`EquipSlot`, `DropSlot`, `MoveSlot`, `FistBlock`, `FistAttack`); у игрока `InvState` (`SlotN` StringValue + атрибут `Count`, `Equipped` IntValue).
+Рантайм (создаёт сервер, в Git нет): `ReplicatedStorage.Remotes` (`EquipSlot`, `DropSlot`, `MoveSlot`, `FistBlock`, `FistAttack`, `AxeAttack`, `PickaxeAttack`, `ToolHint`); у игрока `InvState` (`SlotN` StringValue + атрибут `Count`, `Equipped` IntValue).
 
 ## Модули и сеть
 
-Паттерн модуля: `local Foo = {}` → `function Foo.Method()` → `return Foo`. Точка входа генератора — `Generate()`. Конфиг мира — `ConfigLoader.Get()` (кэш на процесс) и `ConfigLoader.SpawnThresholds(cfg)` (накопленные пороги `thin < mega < stick < rock < boulder`). Конфиг предметов — `ItemsConfig.Get()` / `GetMelee` / `GetItem` / `MaxStack` / `DisplayName`.
+Паттерн модуля: `local Foo = {}` → `function Foo.Method()` → `return Foo`. Точка входа генератора — `Generate()`. Конфиг мира — `ConfigLoader.Get()` (кэш на процесс) и `ConfigLoader.SpawnThresholds(cfg)` (накопленные пороги `thin < mega < stick < rock < boulder`). Конфиг предметов — `ItemsConfig.Get()` / `GetMelee` / `GetItem` / `MaxStack` / `DisplayName` / `TreeDamage` / `RockDamage` / `SwingAnimation`.
 
-Имена файлов Rojo: `*.server.lua` = Script, `*.client.lua` = LocalScript, `*.module.luau` = ModuleScript. Инстансы ассетов и клонов называются как файл/шаблон (`MegaTree`, `Stick`, `fistweapon_A`). Комментарии по-русски. UI `display_name` — **английский** (`Fist Weapon`, `Stick`, `Rock`). В новых и редактируемых модулях — Luau + `--!strict`. Отступы смешанные: табы в `TerrainGenerator`, `ConfigLoader`, `ItemsConfig`, `InventoryService`, `Inventory`, `FistStance`, `FistWeapon`, `WorldLoot`; 4 пробела в `Main` и `ObjectGenerator` — в файле не переключать.
+Имена файлов Rojo: `*.server.lua` = Script, `*.client.lua` = LocalScript, `*.module.luau` = ModuleScript. Инстансы ассетов и клонов называются как файл/шаблон (`MegaTree`, `Stick`, `fistweapon_A`, `Axe`, `Pickaxe`). Комментарии по-русски. UI `display_name` и подсказки ToolHint — **английский** (`Fist Weapon`, `Stick`, `Rock`, `Axe`, `Pickaxe`, `Use an Axe!`). В новых и редактируемых модулях — Luau + `--!strict`. Отступы смешанные: табы в `TerrainGenerator`, `ConfigLoader`, `ItemsConfig`, `InventoryService`, `Inventory`, `FistStance`, `FistWeapon`, `WorldLoot`, `AxeCombat`, `PickaxeCombat`, `ToolHints`; 4 пробела в `Main` и `ObjectGenerator` — в файле не переключать.
 
 Спавн: в начале `Main` сразу `Players.CharacterAutoLoads = false`; после готовности мира — прозрачный `SpawnLocation` без коллизии над рельефом, `LoadCharacter`, затем снова `CharacterAutoLoads = true`. Поднимать персонажа только если он застрял под землёй, не ставить на невидимую полку. Рядом со спавном `Main` ставит `workspace.TrainingDummy` (Humanoid 200 HP; после смерти пересоздаётся).
+
+`Main.configStamp`: число `%`-плейсхолдеров **строго** = числу аргументов `string.format` (лишний `%` роняет Main до спавна).
 
 ## Инвентарь и лут
 
 Источник истины — `InventoryService` session (`slots[i] = { id, count }`), зеркало в `Player.InvState`. Клиентский UI **только** читает `InvState`, не Backpack. DataStore `R1_Inventory_v1` только вне Studio.
 
 - **Стаки:** ресурсы (`kind: resource`) складываются до `max_stack` (Stick/SmallRock = 99). Melee обычно `max_stack: 1`. UI: `Stick x3`, бейдж `xN`.
-- **Экип:** любой предмет в слоте → Tool в руках. `FistWeapon` — невидимый Handle + weld `fistweapon_A` на обе руки. Ресурсы — Tool с видимым Handle (Stick cylinder / клон SmallRock). Повторный выбор того же слота (цифра или клик) → снять с рук, **не** дроп. Remotes: `EquipSlot(slot|0)`.
+- **Экип:** любой предмет в слоте → Tool в руках. `FistWeapon` — невидимый Handle + weld `fistweapon_A` на обе руки. `Axe` / `Pickaxe` — невидимый Handle + weld-визуал из `assets` в правой руке. Ресурсы — Tool с видимым Handle (Stick cylinder / клон SmallRock). Повторный выбор того же слота (цифра или клик) → снять с рук, **не** дроп. Remotes: `EquipSlot(slot|0)`.
 - **Дроп:** `G` или drag из слота наружу → `DropSlot` (одна штука из стака). Drag на другой слот → `MoveSlot` (swap/merge). Перед Destroy экипированного Tool сначала `UnequipTools` + `visualCleanup` (иначе weld-кастеты остаются на руках).
-- **Подбор:** `WorldLoot` вешает ProximityPrompt (E, `Pick up`) на `Stick` / `SmallRock` / дропнутый `FistWeapon`. Рюкзак UI — клавиша **B** (E занят подбором).
+- **Подбор:** `WorldLoot` вешает ProximityPrompt (E, `Pick up`) на `Stick` / `SmallRock` / дропнутый `FistWeapon` / `Axe` / `Pickaxe`. Рюкзак UI — клавиша **B** (E занят подбором).
 - **Иконки:** поле `icon` в `items_config` (`rbxassetid://…`). Пусто → ViewportFrame из 3D. PNG-исходники в `item_icons/` (не в Rojo sync).
 - **Мелкий камень на земле:** без крена, посадка по нормали; валуны `boulder_tilt` (сейчас 0). Cylinder Stick: Size = `(длина, диаметр, диаметр)` по оси X.
 
-**Константы посадки рук FistWeapon уже отшлифованы — не менять без явной просьбы.** Стойка/блок/удары — только `FistStance`. ПКМ блок → `IsBlocking` + `WalkSpeed`. ЛКМ комбо → `FistAttack(step)` + хитбокс из `items_config`.
+**Константы посадки рук FistWeapon и Grip Axe/Pickaxe уже отшлифованы — не менять без явной просьбы.** Стойка/блок/удары кулаков — только `FistStance`. ПКМ блок → `IsBlocking` + `WalkSpeed`. ЛКМ комбо → `FistAttack(step)` + хитбокс из `items_config`. Удары топора/кирки — `AxeCombat` / `PickaxeCombat` (клиент анимация Action3 + remote; сервер хит после `hit_delays`).
 
-Баланс: **не хардкодить урон/кулдауны/хитбокс/max_stack/display_name в боевом коде.** Новый предмет = ключ в `items_config.json` + тот же ключ в `fallback()` у `ItemsConfig` (и клиента `ItemCatalog` FALLBACK при необходимости). Melee-поля: `kind`, `display_name`, `icon`, `max_stack`, `combo_reset`, `attack_cooldown`, `finish_cooldown`, `hit_delays`, `damages`, `hitbox`, `knockback`, `block_dot`. Resource: `kind`, `display_name`, `icon`, `world_name`, `max_stack`.
+Баланс: **не хардкодить урон/кулдауны/хитбокс/max_stack/display_name/анимацию удара в боевом коде.** Новый предмет = ключ в `items_config.json` + тот же ключ в `fallback()` у `ItemsConfig` (и клиента `ItemCatalog` FALLBACK при необходимости). Melee-поля: `kind`, `display_name`, `icon`, `max_stack`, `combo_reset`, `attack_cooldown`, `finish_cooldown`, `hit_delays`, `damages`, `hitbox`, `knockback`, `block_dot`; опционально `tree_damage`, `rock_damage`, `swing_animation`, `world_name`. Resource: `kind`, `display_name`, `icon`, `world_name`, `max_stack`. `fillMissing` **не** дополняет JSON-массивы (`hit_delays`/`damages`) индексами из другого оружия.
 
-Новое число генерации: поле в `biome_config.json` + `fallback()` у `ConfigLoader`; если влияет на мир — дописать в `configStamp` в `Main`.
+Новое число генерации/прочности пропа: поле в `biome_config.json` + `fallback()` у `ConfigLoader`; если влияет на мир — дописать в `configStamp` в `Main` (и пересчитать число `%`).
+
+## Инструменты и ресурсы мира
+
+- **Только Axe** рубит `MegaTree` (`tree_damage`, HP = `biome_config.props.mega_tree_hp`). Вал → дроп Stick → `ResourceRespawnManager.Enqueue("MegaTree", …, 90)`.
+- **Только Pickaxe** долбит `MediumRock` (`rock_damage`, HP = `biome_config.props.medium_rock_hp`, по умолчанию 60). Shake → при HP≤0 осколки 0.8с + дроп 3–5 `SmallRock` → `Enqueue("MediumRock", …, 60)`.
+- **SmallRock** — только подбираемый лут, киркой не бьётся.
+- **FistWeapon** и неверный инструмент: урон по дереву/скале не наносится; `ToolHints` → `Use an Axe!` / `Use a Pickaxe!` (не чаще 1.5с).
 
 ## Что уже работает
 
 1. **Старт.** `workspace.WorldGenerated_v2` (`BoolValue`, атрибут `ConfigStamp`). Нет флага или штамп не совпал → стереть пропы (`BigTree`, `thin_tree`, `Stick`, `SmallRock`, `MediumRock`, `MegaTree`), `Terrain:Clear()`, заново ландшафт и объекты.
 2. **Рельеф.** `math.noise`, два октава. Высота = `base_height + noise`. Скала выше `rock_level`; суша — `grass_coverage` Grass, остальное Ground. `grass_height` → Terrain.GrassLength. Генерация на `map_size + 2*edge_margin`. Baseplate удаляется.
 3. **Пруды.** Естественные ямы + добор; `pond_density = 0` отключает добор.
-4. **Пропы.** Шансы = доля клеток. Посадка лучом. Сетка занятости + `exclusion_radius`. Уклон → flatten диск. SmallRock без крена (нормаль); MediumRock — `boulder_tilt`.
+4. **Пропы.** Шансы = доля клеток. Посадка лучом. Сетка занятости + `exclusion_radius`. Уклон → flatten диск. SmallRock без крена (нормаль); MediumRock — `boulder_tilt` + атрибут `HP`.
 5. **Спавн игрока.** После готовности мира; `TrainingDummy` у спавна.
-6. **Инвентарь.** Хотбар+рюкзак, стаки, экип/toggle, G/drag дроп, DataStore вне Studio; стартовый FistWeapon в слоте 1.
-7. **Лут мира.** E подбор Stick/SmallRock; дроп обратно в мир; hover-подсказка.
+6. **Инвентарь.** Хотбар+рюкзак, стаки, экип/toggle, G/drag дроп, DataStore вне Studio; старт: FistWeapon слот 1, Axe слот 2, Pickaxe слот 3.
+7. **Лут мира.** E подбор Stick/SmallRock/Axe/Pickaxe/FistWeapon; дроп обратно в мир; hover-подсказка.
 8. **FistWeapon.** Парные кастеты; стойка; блок; комбо 3 удара + серверный хитбокс.
+9. **Axe.** Экип+Grip; удар Action3; рубка MegaTree; респавн дерева.
+10. **Pickaxe.** Экип+Grip; удар из `swing_animation`; добыча MediumRock; респавн скалы; дроп SmallRock.
+11. **ToolHints.** Неверный инструмент по MegaTree/MediumRock → английская подсказка на экране.
 
-Не сделано: прочие предметы (мечи, кирки, топоры, `FistWeapon_gold`…), крафт, голод/здоровье, день/ночь, мобы, рубка/добыча, загрузочный экран, финальная моделька FistWeapon на земле.
+Не сделано: прочие предметы (мечи, кирки других тиров, `FistWeapon_gold`…), крафт, голод/здоровье, день/ночь, мобы, загрузочный экран, финальная моделька FistWeapon на земле.

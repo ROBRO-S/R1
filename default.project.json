@@ -84,6 +84,18 @@
         "$path": "src/server/scripts/AxeCombat.server.lua"
       },
 
+      "PickaxeCombat": {
+        "$path": "src/server/scripts/PickaxeCombat.module.luau"
+      },
+
+      "PickaxeCombatBoot": {
+        "$path": "src/server/scripts/PickaxeCombat.server.lua"
+      },
+
+      "ToolHints": {
+        "$path": "src/server/scripts/ToolHints.module.luau"
+      },
+
       "WorldLoot": {
         "$path": "src/server/scripts/WorldLoot.server.lua"
       }
