@@ -5,13 +5,56 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local DataStoreService = game:GetService("DataStoreService")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local ItemsConfig = require(ServerScriptService:WaitForChild("ItemsConfig"))
+local InventoryService = require(ServerScriptService:WaitForChild("InventoryService"))
 type MeleeStats = ItemsConfig.MeleeStats
+
+-- Топор / кирка: remote + хит логика (boot-скрипты могли не подняться в Studio).
+do
+	local ok, axe = pcall(function()
+		return require(ServerScriptService:WaitForChild("AxeCombat", 10))
+	end)
+	if ok and type(axe) == "table" and type(axe.Start) == "function" then
+		axe.Start()
+	else
+		warn("FistWeapon: не смог Start AxeCombat:", axe)
+		InventoryService.EnsureRemote("AxeAttack")
+	end
+end
+do
+	local ok, pickaxe = pcall(function()
+		return require(ServerScriptService:WaitForChild("PickaxeCombat", 10))
+	end)
+	if ok and type(pickaxe) == "table" and type(pickaxe.Start) == "function" then
+		pickaxe.Start()
+	else
+		warn("FistWeapon: не смог Start PickaxeCombat:", pickaxe)
+		InventoryService.EnsureRemote("PickaxeAttack")
+	end
+end
+do
+	local ok, hints = pcall(function()
+		return require(ServerScriptService:WaitForChild("ToolHints", 10))
+	end)
+	if ok and type(hints) == "table" and type(hints.Start) == "function" then
+		hints.Start()
+	else
+		InventoryService.EnsureRemote("ToolHint")
+	end
+end
+do
+	local ok, gather = pcall(function()
+		return require(ServerScriptService:WaitForChild("BigTreeGather", 10))
+	end)
+	if ok and type(gather) == "table" and type(gather.Start) == "function" then
+		gather.Start()
+	else
+		warn("FistWeapon: не смог Start BigTreeGather:", gather)
+	end
+end
 
 -- === Посадка на кулаки (можно чуть утопить внутрь руки) ===
 local RIGHT_FIST_POSITION = Vector3.new(0, 0.1, 0)
@@ -29,14 +72,19 @@ local ITEM_ID = "FistWeapon"
 local TEMPLATE_NAME = "fistweapon_A"
 local RIGHT_VISUAL = "FistWeapon_Right"
 local LEFT_VISUAL = "FistWeapon_Left"
-local SLOT_COUNT = 20
-local STORE_NAME = "R1_Inventory_v1"
-local ATTR_SLOT = "InvSlot"
-local ATTR_ITEM = "ItemId"
+local SLOT_COUNT = InventoryService.SlotCount()
+local ATTR_SLOT = InventoryService.AttrSlot()
+local ATTR_ITEM = InventoryService.AttrItem()
 -- Клиент читает тайминги комбо с Tool (из items_config).
 local ATTR_COMBO_RESET = "ComboReset"
 local ATTR_ATTACK_CD = "AttackCooldown"
 local ATTR_FINISH_CD = "FinishCooldown"
+local ATTR_SWING_ANIM = "SwingAnimation"
+
+local ToolHints: any = nil
+pcall(function()
+	ToolHints = require(ServerScriptService:WaitForChild("ToolHints", 10))
+end)
 
 local function anglesFromDeg(rot: Vector3): CFrame
 	return CFrame.Angles(math.rad(rot.X), math.rad(rot.Y), math.rad(rot.Z))
@@ -79,94 +127,11 @@ if not template then
 	return
 end
 
--- Remotes
-local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-if not (remotes and remotes:IsA("Folder")) then
-	if remotes then
-		remotes:Destroy()
-	end
-	remotes = Instance.new("Folder")
-	remotes.Name = "Remotes"
-	remotes.Parent = ReplicatedStorage
-end
-local function ensureRemote(name: string): RemoteEvent
-	local remote = remotes:FindFirstChild(name)
-	if remote and remote:IsA("RemoteEvent") then
-		return remote
-	end
-	if remote then
-		remote:Destroy()
-	end
-	local created = Instance.new("RemoteEvent")
-	created.Name = name
-	created.Parent = remotes
-	return created
-end
+local equipRemote = InventoryService.EnsureRemote("EquipSlot")
+local blockRemote = InventoryService.EnsureRemote("FistBlock")
+local attackRemote = InventoryService.EnsureRemote("FistAttack")
 
-local equipRemote = ensureRemote("EquipSlot")
-local blockRemote = ensureRemote("FistBlock")
-local attackRemote = ensureRemote("FistAttack")
-
--- DataStore только вне Studio (иначе спам StudioAccessToApisNotAllowed).
-local store: DataStore? = nil
-if not RunService:IsStudio() then
-	local ok, result = pcall(function()
-		return DataStoreService:GetDataStore(STORE_NAME)
-	end)
-	if ok then
-		store = result
-	end
-end
-
-local session: { [Player]: { slots: { [number]: string }, equipped: number } } = {}
 local attackState: { [Player]: { lastAttackAt: number, lastStep: number, cooldownUntil: number } } = {}
-
-local function ensureInvState(player: Player): Folder
-	local folder = player:FindFirstChild("InvState")
-	if folder and folder:IsA("Folder") then
-		return folder
-	end
-	if folder then
-		folder:Destroy()
-	end
-	folder = Instance.new("Folder")
-	folder.Name = "InvState"
-	folder.Parent = player
-
-	local equipped = Instance.new("IntValue")
-	equipped.Name = "Equipped"
-	equipped.Value = 0
-	equipped.Parent = folder
-	return folder
-end
-
-local function writeInvState(player: Player)
-	local data = session[player]
-	local folder = ensureInvState(player)
-	local equipped = folder:FindFirstChild("Equipped")
-	if equipped and equipped:IsA("IntValue") then
-		equipped.Value = if data then data.equipped else 0
-	end
-
-	for i = 1, SLOT_COUNT do
-		local name = "Slot" .. i
-		local value = folder:FindFirstChild(name)
-		local itemId = data and data.slots[i] or nil
-		if itemId then
-			if not (value and value:IsA("StringValue")) then
-				if value then
-					value:Destroy()
-				end
-				value = Instance.new("StringValue")
-				value.Name = name
-				value.Parent = folder
-			end
-			(value :: StringValue).Value = itemId
-		elseif value then
-			value:Destroy()
-		end
-	end
-end
 
 local function findArm(character: Model, side: "Left" | "Right"): BasePart?
 	if side == "Left" then
@@ -297,6 +262,10 @@ local function applyCombatAttrs(tool: Tool, stats: MeleeStats)
 	tool:SetAttribute(ATTR_COMBO_RESET, stats.combo_reset)
 	tool:SetAttribute(ATTR_ATTACK_CD, stats.attack_cooldown)
 	tool:SetAttribute(ATTR_FINISH_CD, stats.finish_cooldown)
+	local swing = ItemsConfig.SwingAnimation(stats)
+	if swing ~= "" then
+		tool:SetAttribute(ATTR_SWING_ANIM, swing)
+	end
 	if stats.display_name ~= "" then
 		tool.ToolTip = stats.display_name
 	end
@@ -346,7 +315,29 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 	overlap.RespectCanCollide = false
 
 	local hitHumanoids: { [Humanoid]: boolean } = {}
+	local sawMegaTree = false
+	local sawMediumRock = false
+	local TREE_HINT_FLAT = 14
 	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, hitbox, overlap)) do
+		if part.Name == "MediumRock" or (part.Parent and part.Parent.Name == "MediumRock") then
+			sawMediumRock = true
+		end
+		local treeNode: Instance? = part
+		while treeNode and treeNode ~= Workspace do
+			if treeNode:IsA("Model") and treeNode.Name == "MegaTree" then
+				-- Ось по визуалу (без Soil PrimaryPart).
+				local cf = treeNode:GetBoundingBox()
+				local base = cf.Position
+				local dx = attackerRoot.Position.X - base.X
+				local dz = attackerRoot.Position.Z - base.Z
+				if math.sqrt(dx * dx + dz * dz) <= TREE_HINT_FLAT then
+					sawMegaTree = true
+				end
+				break
+			end
+			treeNode = treeNode.Parent
+		end
+
 		local model = part:FindFirstAncestorOfClass("Model")
 		if model and model ~= character then
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -369,6 +360,18 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 				if step >= comboLength and not blocked and targetRoot then
 					applyKnockback(attackerRoot, targetRoot, stats.knockback)
 				end
+			end
+		end
+	end
+
+	-- Кулаки не рубят деревья и не долбят скалы — только подсказка.
+	if ToolHints then
+		local player = Players:GetPlayerFromCharacter(character)
+		if player then
+			if sawMegaTree then
+				ToolHints.NeedAxe(player)
+			elseif sawMediumRock then
+				ToolHints.NeedPickaxe(player)
 			end
 		end
 	end
@@ -395,7 +398,7 @@ local function createTool(): Tool
 	tool.Name = TOOL_NAME
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
-	tool.ToolTip = if stats then stats.display_name else "Fists"
+	tool.ToolTip = if stats then stats.display_name else "Fist Weapon"
 	tool.Grip = CFrame.new()
 	if stats then
 		applyCombatAttrs(tool, stats)
@@ -410,41 +413,44 @@ local function createTool(): Tool
 	handle.CastShadow = false
 	handle.Parent = tool
 
+	local weldedCharacter: Model? = nil
+
 	tool.Equipped:Connect(function()
 		local character = tool.Parent
 		if not character or not character:IsA("Model") then
 			return
 		end
+		weldedCharacter = character
 		weldFist(character, "Right")
 		weldFist(character, "Left")
 
 		local player = Players:GetPlayerFromCharacter(character)
-		if player and session[player] then
+		if player and InventoryService.GetSession(player) then
 			local slot = tool:GetAttribute(ATTR_SLOT)
 			if typeof(slot) == "number" then
-				session[player].equipped = slot
-				writeInvState(player)
+				InventoryService.SetEquipped(player, slot)
 			end
 		end
 	end)
 
 	tool.Unequipped:Connect(function()
-		local backpack = tool.Parent
-		if not (backpack and backpack:IsA("Backpack")) then
-			return
-		end
-		local player = backpack.Parent
-		if not (player and player:IsA("Player")) then
-			return
-		end
-		local character = player.Character
+		-- Чистим weld даже если Tool уничтожили, а не положили в Backpack.
+		local character = weldedCharacter
+		weldedCharacter = nil
 		if character then
 			clearVisuals(character)
 			clearBlocking(character)
 		end
-		if session[player] then
-			session[player].equipped = 0
-			writeInvState(player)
+
+		local parent = tool.Parent
+		local player: Player? = nil
+		if parent and parent:IsA("Backpack") and parent.Parent and parent.Parent:IsA("Player") then
+			player = parent.Parent
+		elseif character then
+			player = Players:GetPlayerFromCharacter(character)
+		end
+		if player and InventoryService.GetSession(player) then
+			InventoryService.SetEquipped(player, 0)
 		end
 	end)
 
@@ -466,8 +472,220 @@ local function findTool(player: Player, pred: (Tool) -> boolean): Tool?
 	return scan(player:FindFirstChildOfClass("Backpack")) or scan(player.Character)
 end
 
+local function scalePartTo(part: BasePart, maxDim: number)
+	local current = math.max(part.Size.X, part.Size.Y, part.Size.Z)
+	if current <= 1e-3 or current <= maxDim then
+		return
+	end
+	part.Size = part.Size * (maxDim / current)
+end
+
+local function hookHeldTool(tool: Tool)
+	tool.Equipped:Connect(function()
+		local character = tool.Parent
+		if not character or not character:IsA("Model") then
+			return
+		end
+		local player = Players:GetPlayerFromCharacter(character)
+		if player and InventoryService.GetSession(player) then
+			local slot = tool:GetAttribute(ATTR_SLOT)
+			if typeof(slot) == "number" then
+				InventoryService.SetEquipped(player, slot)
+			end
+		end
+	end)
+
+	tool.Unequipped:Connect(function()
+		local backpack = tool.Parent
+		if not (backpack and backpack:IsA("Backpack")) then
+			return
+		end
+		local player = backpack.Parent
+		if not (player and player:IsA("Player")) then
+			return
+		end
+		if InventoryService.GetSession(player) then
+			InventoryService.SetEquipped(player, 0)
+		end
+	end)
+end
+
+local function prepareHandlePart(part: BasePart)
+	part.Anchored = false
+	part.CanCollide = false
+	part.Massless = true
+	part.CastShadow = true
+	part.CanTouch = false
+	part.CanQuery = false
+end
+
+-- Ассет (Part/Union/Model) → Handle Tool'а. Grip потом подгонишь.
+local function attachAssetHandle(tool: Tool, assetName: string): BasePart?
+	local assets = ReplicatedStorage:FindFirstChild("assets")
+	local template = assets and assets:FindFirstChild(assetName)
+	if not template then
+		return nil
+	end
+
+	if template:IsA("BasePart") then
+		local handle = template:Clone()
+		handle.Name = "Handle"
+		handle.Transparency = 0
+		prepareHandlePart(handle)
+		handle.Parent = tool
+		return handle
+	end
+
+	if template:IsA("Model") then
+		local model = template:Clone()
+		local handle = model.PrimaryPart
+		if not (handle and handle:IsA("BasePart")) then
+			handle = model:FindFirstChildWhichIsA("BasePart", true)
+		end
+		if not handle then
+			model:Destroy()
+			return nil
+		end
+		handle.Name = "Handle"
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				prepareHandlePart(d)
+				if d ~= handle then
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = handle
+					weld.Part1 = d
+					weld.Parent = handle
+				end
+			end
+		end
+		for _, child in ipairs(model:GetChildren()) do
+			child.Parent = tool
+		end
+		model:Destroy()
+		return handle
+	end
+
+	return nil
+end
+
+-- Обычный предмет в руке (камень, ветка, топор, будущие ресурсы).
+local function createHeldTool(itemId: string): Tool
+	local tool = Instance.new("Tool")
+	tool.Name = itemId
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool.ToolTip = ItemsConfig.DisplayName(itemId)
+
+	local handle: BasePart
+	if itemId == "Stick" then
+		handle = Instance.new("Part")
+		handle.Shape = Enum.PartType.Cylinder
+		handle.Size = Vector3.new(1.5, 0.22, 0.22)
+		handle.Color = Color3.fromRGB(120, 85, 50)
+		handle.Material = Enum.Material.Wood
+		tool.Grip = CFrame.new(0, -0.05, 0) * CFrame.Angles(0, 0, math.rad(90))
+	elseif itemId == "SmallRock" then
+		local rock = attachAssetHandle(tool, "SmallRock")
+		if rock then
+			scalePartTo(rock, 1.1)
+			handle = rock
+		else
+			handle = Instance.new("Part")
+			handle.Size = Vector3.new(0.95, 0.7, 1.05)
+			handle.Color = Color3.fromRGB(90, 90, 95)
+			handle.Material = Enum.Material.Slate
+		end
+		tool.Grip = CFrame.new(0, -0.12, -0.25)
+	elseif itemId == "Axe" or itemId == "Pickaxe" then
+		-- Невидимый Handle (Grip) + видимый меш, всегда в правой руке.
+		local assetName = itemId
+		local visualName = itemId .. "Visual"
+		local weldName = itemId .. "RightWeld"
+		local formatAttr = itemId .. "VisualFormat"
+
+		handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(0.2, 0.2, 0.2)
+		handle.Transparency = 1
+		handle.CanCollide = false
+		handle.Massless = true
+		handle.CastShadow = false
+		prepareHandlePart(handle)
+		handle.Parent = tool
+
+		local visual: BasePart? = nil
+		local assets = ReplicatedStorage:FindFirstChild("assets")
+		local template = assets and assets:FindFirstChild(assetName)
+		if template and template:IsA("BasePart") then
+			visual = template:Clone()
+		elseif template and template:IsA("Model") then
+			local src = template.PrimaryPart or template:FindFirstChildWhichIsA("BasePart", true)
+			if src then
+				visual = src:Clone()
+			end
+		end
+		if not visual then
+			visual = Instance.new("Part")
+			visual.Size = Vector3.new(0.35, 2.2, 0.7)
+			visual.Color = Color3.fromRGB(120, 90, 55)
+			visual.Material = Enum.Material.Wood
+			warn("FistWeapon: нет assets." .. assetName .. " — временный Part")
+		end
+		visual.Name = visualName
+		visual.Transparency = 0
+		prepareHandlePart(visual)
+		visual.Parent = tool
+		local weld = Instance.new("Weld")
+		weld.Name = weldName
+		weld.Part0 = handle
+		weld.Part1 = visual
+		weld.C0 = CFrame.new()
+		weld.C1 = CFrame.new()
+		weld.Parent = visual
+		local formatVersion = if itemId == "Pickaxe" then 3 else 2
+		tool:SetAttribute(formatAttr, formatVersion)
+		tool.ManualActivationOnly = false
+		if itemId == "Pickaxe" then
+			-- Grip отшлифован — не менять без просьбы.
+			tool.Grip = CFrame.new(0, -0.9, -0.3)
+		else
+			-- Axe Grip отшлифован — не менять без просьбы.
+			tool.Grip = CFrame.new(-0.3, -0.9, 0) * CFrame.Angles(0, math.rad(-90), 0)
+		end
+	else
+		handle = Instance.new("Part")
+		handle.Size = Vector3.new(0.7, 0.7, 0.7)
+		handle.Color = Color3.fromRGB(180, 160, 120)
+		handle.Material = Enum.Material.SmoothPlastic
+		tool.Grip = CFrame.new(0, -0.1, -0.2)
+	end
+
+	if handle.Parent ~= tool then
+		handle.Name = "Handle"
+		prepareHandlePart(handle)
+		handle.Parent = tool
+	end
+
+	hookHeldTool(tool)
+	return tool
+end
+
+local function usesFistVisual(itemId: string): boolean
+	-- Только семейство кастетов: невидимый Handle + weld на руки.
+	return itemId == ITEM_ID or string.sub(itemId, 1, #"FistWeapon") == "FistWeapon"
+end
+
+local function createToolForItem(itemId: string): Tool
+	if usesFistVisual(itemId) then
+		local tool = createTool()
+		tool.Name = itemId
+		return tool
+	end
+	return createHeldTool(itemId)
+end
+
 local function ensureTools(player: Player)
-	local data = session[player]
+	local data = InventoryService.GetSession(player)
 	if not data then
 		return
 	end
@@ -476,31 +694,84 @@ local function ensureTools(player: Player)
 		return
 	end
 
-	for slot, itemId in pairs(data.slots) do
-		if itemId == ITEM_ID then
-			local existing = findTool(player, function(tool)
-				return tool:GetAttribute(ATTR_SLOT) == slot or tool.Name == TOOL_NAME
-			end)
-			if existing then
-				existing:SetAttribute(ATTR_SLOT, slot)
-				existing:SetAttribute(ATTR_ITEM, ITEM_ID)
-				local stats = ItemsConfig.GetMelee(ITEM_ID)
-				if stats then
-					applyCombatAttrs(existing, stats)
+	-- Убрать Tool'ы без слота / с другим ItemId.
+	local function prune(container: Instance?)
+		if not container then
+			return
+		end
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("Tool") then
+				local slot = child:GetAttribute(ATTR_SLOT)
+				local stack = if typeof(slot) == "number" then data.slots[slot] else nil
+				local itemId = if stack then stack.id else nil
+				local toolItem = child:GetAttribute(ATTR_ITEM)
+				if typeof(slot) ~= "number"
+					or not itemId
+					or typeof(toolItem) ~= "string"
+					or toolItem ~= itemId
+				then
+					child:Destroy()
 				end
-			else
-				local tool = createTool()
-				tool:SetAttribute(ATTR_SLOT, slot)
-				tool:SetAttribute(ATTR_ITEM, ITEM_ID)
-				local stats = ItemsConfig.GetMelee(ITEM_ID)
-				if stats then
-					applyCombatAttrs(tool, stats)
-				end
-				tool.Parent = backpack
 			end
 		end
 	end
+	prune(backpack)
+	prune(player.Character)
+
+	for slot, stack in pairs(data.slots) do
+		local itemId = stack.id
+		local existing = findTool(player, function(tool)
+			return tool:GetAttribute(ATTR_SLOT) == slot
+		end)
+		if existing then
+			-- Старый Axe/Pickaxe без актуальной метки формата — пересобрать визуал.
+			local expectedFormat = if itemId == "Pickaxe" then 3 elseif itemId == "Axe" then 2 else nil
+			local needsToolRebuild = expectedFormat ~= nil
+				and existing:GetAttribute(itemId .. "VisualFormat") ~= expectedFormat
+			if needsToolRebuild then
+				local character = player.Character
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				if humanoid and existing.Parent == character then
+					humanoid:UnequipTools()
+				end
+				existing:Destroy()
+				existing = nil
+			else
+				existing.Name = itemId
+				existing:SetAttribute(ATTR_SLOT, slot)
+				existing:SetAttribute(ATTR_ITEM, itemId)
+				if ItemsConfig.IsMelee(itemId) then
+					local stats = ItemsConfig.GetMelee(itemId)
+					if stats then
+						applyCombatAttrs(existing, stats)
+					end
+				end
+			end
+		end
+		if not existing then
+			local tool = createToolForItem(itemId)
+			tool:SetAttribute(ATTR_SLOT, slot)
+			tool:SetAttribute(ATTR_ITEM, itemId)
+			if ItemsConfig.IsMelee(itemId) then
+				local stats = ItemsConfig.GetMelee(itemId)
+				if stats then
+					applyCombatAttrs(tool, stats)
+				end
+			end
+			tool.Parent = backpack
+		end
+	end
 end
+
+InventoryService.SetToolSync(ensureTools)
+
+InventoryService.SetVisualCleanup(function(player: Player)
+	local character = player.Character
+	if character then
+		clearVisuals(character)
+		clearBlocking(character)
+	end
+end)
 
 local function equipSlot(player: Player, slot: number)
 	local character = player.Character
@@ -512,97 +783,43 @@ local function equipSlot(player: Player, slot: number)
 		return
 	end
 
+	local data = InventoryService.GetSession(player)
+	if not data then
+		return
+	end
+
 	if slot < 1 then
 		humanoid:UnequipTools()
+		InventoryService.SetEquipped(player, 0)
+		return
+	end
+
+	local stack = data.slots[slot]
+	if not stack then
+		humanoid:UnequipTools()
+		InventoryService.SetEquipped(player, 0)
 		return
 	end
 
 	local tool = findTool(player, function(t)
-		return t:GetAttribute(ATTR_SLOT) == slot or (slot == 1 and t.Name == TOOL_NAME)
+		return t:GetAttribute(ATTR_SLOT) == slot
 	end)
+	if not tool then
+		ensureTools(player)
+		tool = findTool(player, function(t)
+			return t:GetAttribute(ATTR_SLOT) == slot
+		end)
+	end
 	if tool then
 		humanoid:EquipTool(tool)
+	else
+		InventoryService.SetEquipped(player, slot)
 	end
-end
-
-local function defaultSlots(): { [number]: string }
-	return { [1] = ITEM_ID }
-end
-
-local function loadSlots(player: Player): ({ [number]: string }, number)
-	if not store then
-		return defaultSlots(), 1
-	end
-	local ok, data = pcall(function()
-		return store:GetAsync("u_" .. player.UserId)
-	end)
-	if not ok or typeof(data) ~= "table" then
-		return defaultSlots(), 1
-	end
-	local slots: { [number]: string } = {}
-	local raw = (data :: any).slots
-	if typeof(raw) == "table" then
-		for key, itemId in pairs(raw) do
-			local slotNum = tonumber(key)
-			if slotNum and slotNum >= 1 and slotNum <= SLOT_COUNT and itemId == ITEM_ID then
-				slots[slotNum] = ITEM_ID
-			end
-		end
-	end
-	if next(slots) == nil then
-		slots = defaultSlots()
-	end
-	local equipped = tonumber((data :: any).equipped) or 1
-	if not slots[equipped] then
-		equipped = 1
-	end
-	return slots, equipped
-end
-
-local function saveSlots(player: Player)
-	local data = session[player]
-	if not data then
-		return
-	end
-	local live: { [number]: string } = {}
-	local function ingest(container: Instance?)
-		if not container then
-			return
-		end
-		for _, child in ipairs(container:GetChildren()) do
-			if child:IsA("Tool") then
-				local slot = child:GetAttribute(ATTR_SLOT)
-				local itemId = child:GetAttribute(ATTR_ITEM)
-				if typeof(slot) == "number" and typeof(itemId) == "string" then
-					live[slot] = itemId
-				elseif child.Name == TOOL_NAME then
-					live[1] = ITEM_ID
-				end
-			end
-		end
-	end
-	ingest(player:FindFirstChildOfClass("Backpack"))
-	ingest(player.Character)
-	if next(live) ~= nil then
-		data.slots = live
-	end
-
-	if not store then
-		return
-	end
-	local payload = { slots = {}, equipped = data.equipped }
-	for slot, itemId in pairs(data.slots) do
-		payload.slots[tostring(slot)] = itemId
-	end
-	pcall(function()
-		store:SetAsync("u_" .. player.UserId, payload)
-	end)
 end
 
 local function hookPlayer(player: Player)
-	local slots, equipped = loadSlots(player)
-	session[player] = { slots = slots, equipped = equipped }
-	writeInvState(player)
+	-- Сессия уже поднимается в InventoryService; здесь — Tool и экип.
+	InventoryService.HookPlayer(player)
 
 	player.CharacterAdded:Connect(function(character)
 		task.defer(function()
@@ -611,8 +828,8 @@ local function hookPlayer(player: Player)
 			end
 			character:WaitForChild("Humanoid", 10)
 			ensureTools(player)
-			writeInvState(player)
-			local data = session[player]
+			InventoryService.WriteState(player)
+			local data = InventoryService.GetSession(player)
 			if data and data.equipped > 0 then
 				equipSlot(player, data.equipped)
 			end
@@ -633,13 +850,26 @@ local function hookPlayer(player: Player)
 				return
 			end
 			ensureTools(player)
-			writeInvState(player)
-			local data = session[player]
+			InventoryService.WriteState(player)
+			local data = InventoryService.GetSession(player)
 			if data and data.equipped > 0 then
 				equipSlot(player, data.equipped)
 			end
 		end)
 	end
+end
+
+local function isHoldingSlot(player: Player, slot: number): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Tool") and child:GetAttribute(ATTR_SLOT) == slot then
+			return true
+		end
+	end
+	return false
 end
 
 equipRemote.OnServerEvent:Connect(function(player: Player, slot: any)
@@ -650,12 +880,17 @@ equipRemote.OnServerEvent:Connect(function(player: Player, slot: any)
 	if slot < 0 or slot > SLOT_COUNT then
 		return
 	end
-	local data = session[player]
+	local data = InventoryService.GetSession(player)
 	if not data then
 		return
 	end
 	if slot >= 1 and not data.slots[slot] then
 		-- Пустой слот → снять.
+		equipSlot(player, 0)
+		return
+	end
+	-- Повторный выбор того же слота → убрать из рук (не дроп).
+	if slot >= 1 and (data.equipped == slot or isHoldingSlot(player, slot)) then
 		equipSlot(player, 0)
 		return
 	end
@@ -752,15 +987,7 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
-	saveSlots(player)
-	session[player] = nil
 	attackState[player] = nil
-end)
-
-game:BindToClose(function()
-	for _, player in ipairs(Players:GetPlayers()) do
-		saveSlots(player)
-	end
 end)
 
 print("FistWeapon: готов (" .. template:GetFullName() .. ")")

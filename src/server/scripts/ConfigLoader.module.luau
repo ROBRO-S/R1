@@ -107,6 +107,10 @@ local function fallback()
 			mega_tree_scale = 1,
 			-- Отрицательное — утопить ствол, чтобы корни не торчали.
 			mega_tree_lift = -2,
+			-- Прочность MegaTree для рубки топором (AxeCombat). Удары ≈ hp / tree_damage топора.
+			mega_tree_hp = 75,
+			-- Прочность MediumRock для кирки (PickaxeCombat). Удары ≈ hp / rock_damage.
+			medium_rock_hp = 60,
 			soil_size = 1,
 			soil_transparency = 1,
 			stick_size = { 2.4, 0.6, 0.6 },
@@ -116,7 +120,7 @@ local function fallback()
 			ground_ray_down = 100,
 			small_rock_color = { 100, 100, 100 },
 			rock_transparency = 0,
-			boulder_tilt = 15,
+			boulder_tilt = 0,
 			boulder_color = { 80, 80, 80 },
 			chunk_log_every = 500,
 		},

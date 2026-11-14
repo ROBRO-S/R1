@@ -28,6 +28,16 @@
 
       "items_config": {
         "$path": "src/items_config.json"
+      },
+
+      "Shared": {
+        "$className": "Folder",
+        "ItemCatalog": {
+          "$path": "src/shared/ItemCatalog.module.luau"
+        },
+        "ItemIcon": {
+          "$path": "src/shared/ItemIcon.module.luau"
+        }
       }
     },
 
@@ -42,6 +52,10 @@
         "$path": "src/server/ObjectGenerator.module.luau"
       },
 
+      "ResourceRespawnManager": {
+        "$path": "src/server/ResourceRespawnManager.module.luau"
+      },
+
       "ConfigLoader": {
         "$path": "src/server/scripts/ConfigLoader.module.luau"
       },
@@ -50,12 +64,52 @@
         "$path": "src/server/scripts/ItemsConfig.module.luau"
       },
 
+      "InventoryService": {
+        "$path": "src/server/scripts/InventoryService.module.luau"
+      },
+
       "Main": {
         "$path": "src/server/scripts/Main.server.lua"
       },
 
       "FistWeapon": {
         "$path": "src/server/scripts/FistWeapon.server.lua"
+      },
+
+      "AxeCombat": {
+        "$path": "src/server/scripts/AxeCombat.module.luau"
+      },
+
+      "AxeCombatBoot": {
+        "$path": "src/server/scripts/AxeCombat.server.lua"
+      },
+
+      "PickaxeCombat": {
+        "$path": "src/server/scripts/PickaxeCombat.module.luau"
+      },
+
+      "PickaxeCombatBoot": {
+        "$path": "src/server/scripts/PickaxeCombat.server.lua"
+      },
+
+      "ToolHints": {
+        "$path": "src/server/scripts/ToolHints.module.luau"
+      },
+
+      "HoldGather": {
+        "$path": "src/server/scripts/HoldGather.module.luau"
+      },
+
+      "BigTreeGather": {
+        "$path": "src/server/scripts/BigTreeGather.module.luau"
+      },
+
+      "BigTreeGatherBoot": {
+        "$path": "src/server/scripts/BigTreeGather.server.lua"
+      },
+
+      "WorldLoot": {
+        "$path": "src/server/scripts/WorldLoot.server.lua"
       }
     },
 
