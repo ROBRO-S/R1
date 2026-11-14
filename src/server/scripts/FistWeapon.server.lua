@@ -45,6 +45,16 @@ do
 		InventoryService.EnsureRemote("ToolHint")
 	end
 end
+do
+	local ok, gather = pcall(function()
+		return require(ServerScriptService:WaitForChild("BigTreeGather", 10))
+	end)
+	if ok and type(gather) == "table" and type(gather.Start) == "function" then
+		gather.Start()
+	else
+		warn("FistWeapon: не смог Start BigTreeGather:", gather)
+	end
+end
 
 -- === Посадка на кулаки (можно чуть утопить внутрь руки) ===
 local RIGHT_FIST_POSITION = Vector3.new(0, 0.1, 0)
@@ -307,6 +317,7 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 	local hitHumanoids: { [Humanoid]: boolean } = {}
 	local sawMegaTree = false
 	local sawMediumRock = false
+	local TREE_HINT_FLAT = 14
 	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, hitbox, overlap)) do
 		if part.Name == "MediumRock" or (part.Parent and part.Parent.Name == "MediumRock") then
 			sawMediumRock = true
@@ -314,7 +325,14 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 		local treeNode: Instance? = part
 		while treeNode and treeNode ~= Workspace do
 			if treeNode:IsA("Model") and treeNode.Name == "MegaTree" then
-				sawMegaTree = true
+				-- Ось по визуалу (без Soil PrimaryPart).
+				local cf = treeNode:GetBoundingBox()
+				local base = cf.Position
+				local dx = attackerRoot.Position.X - base.X
+				local dz = attackerRoot.Position.Z - base.Z
+				if math.sqrt(dx * dx + dz * dz) <= TREE_HINT_FLAT then
+					sawMegaTree = true
+				end
 				break
 			end
 			treeNode = treeNode.Parent

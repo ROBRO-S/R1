@@ -26,7 +26,8 @@ local DEFAULT_ROCK_HP = 60
 
 local MOB_RANGE = 12
 local ROCK_HIT_RANGE = 10
-local TREE_HINT_RANGE = 10
+-- Подсказка Use an Axe: только у основания MegaTree (не крона / не BigTree).
+local TREE_HINT_FLAT = 14
 local ROCK_SHAKE_STUDS = 0.18
 local ROCK_SHAKE_TIME = 0.08
 local SHARD_COUNT_MIN = 5
@@ -151,25 +152,34 @@ local function closestPointOnPart(part: BasePart, worldPos: Vector3): (number, V
 	return (world - worldPos).Magnitude, world
 end
 
-local function closestPointOnModel(model: Model, worldPos: Vector3): (number, Vector3)
-	local cf, size = model:GetBoundingBox()
-	local localPos = cf:PointToObjectSpace(worldPos)
-	local half = size * 0.5
-	local clamped = Vector3.new(
-		math.clamp(localPos.X, -half.X, half.X),
-		math.clamp(localPos.Y, -half.Y, half.Y),
-		math.clamp(localPos.Z, -half.Z, half.Z)
-	)
-	local world = cf:PointToWorldSpace(clamped)
-	return (world - worldPos).Magnitude, world
+-- Без Soil: PrimaryPart часто съезжает от визуала.
+local function megaVisualAxis(tree: Model): Vector3
+	local minX, minY, minZ = math.huge, math.huge, math.huge
+	local maxX, maxZ = -math.huge, -math.huge
+	local any = false
+	for _, d in ipairs(tree:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name ~= "Soil" and d.Transparency < 1 then
+			any = true
+			local p = d.Position
+			local h = d.Size * 0.5
+			minX = math.min(minX, p.X - h.X)
+			minY = math.min(minY, p.Y - h.Y)
+			minZ = math.min(minZ, p.Z - h.Z)
+			maxX = math.max(maxX, p.X + h.X)
+			maxZ = math.max(maxZ, p.Z + h.Z)
+		end
+	end
+	if not any then
+		local cf, size = tree:GetBoundingBox()
+		return Vector3.new(cf.Position.X, cf.Position.Y - size.Y * 0.5, cf.Position.Z)
+	end
+	return Vector3.new((minX + maxX) * 0.5, minY, (minZ + maxZ) * 0.5)
 end
 
-local function findAnyTreeAncestor(inst: Instance?): Model?
+local function findMegaTreeAncestor(inst: Instance?): Model?
 	local node: Instance? = inst
 	while node and node ~= Workspace do
-		if node:IsA("Model")
-			and (node.Name == "MegaTree" or node.Name == "BigTree" or node.Name == "thin_tree")
-		then
+		if node:IsA("Model") and node.Name == "MegaTree" then
 			return node
 		end
 		node = node.Parent
@@ -208,26 +218,24 @@ local function hitDummy(attackerRoot: BasePart, mobDamage: number): boolean
 end
 
 local function hintWrongTree(player: Player, attackerRoot: BasePart, character: Model)
-	local box = Vector3.new(16, 28, 16)
-	local hitCFrame = attackerRoot.CFrame * CFrame.new(0, 5, -(box.Z * 0.35))
+	local rootPos = attackerRoot.Position
+	local box = Vector3.new(12, 20, 12)
+	local hitCFrame = attackerRoot.CFrame * CFrame.new(0, 3, -5)
 	local overlap = OverlapParams.new()
 	overlap.FilterType = Enum.RaycastFilterType.Exclude
 	overlap.FilterDescendantsInstances = { character }
 	overlap.RespectCanCollide = false
 	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, box, overlap)) do
-		local tree = findAnyTreeAncestor(part)
-		if tree and tree.Name == "MegaTree" then
-			local dist = closestPointOnModel(tree, attackerRoot.Position)
-			if dist <= TREE_HINT_RANGE then
-				ToolHints.NeedAxe(player)
-				return
-			end
+		local tree = findMegaTreeAncestor(part)
+		if tree and part.Name ~= "Soil" and flatDist(rootPos, megaVisualAxis(tree)) <= TREE_HINT_FLAT then
+			ToolHints.NeedAxe(player)
+			return
 		end
 	end
 	for _, child in ipairs(Workspace:GetChildren()) do
 		if child:IsA("Model") and child.Name == "MegaTree" then
-			local dist, closest = closestPointOnModel(child, attackerRoot.Position)
-			if dist <= TREE_HINT_RANGE and inFront(attackerRoot, closest, -0.25) then
+			local axis = megaVisualAxis(child)
+			if flatDist(rootPos, axis) <= TREE_HINT_FLAT and inFront(attackerRoot, axis, -0.35) then
 				ToolHints.NeedAxe(player)
 				return
 			end

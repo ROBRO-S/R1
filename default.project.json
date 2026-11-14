@@ -96,6 +96,18 @@
         "$path": "src/server/scripts/ToolHints.module.luau"
       },
 
+      "HoldGather": {
+        "$path": "src/server/scripts/HoldGather.module.luau"
+      },
+
+      "BigTreeGather": {
+        "$path": "src/server/scripts/BigTreeGather.module.luau"
+      },
+
+      "BigTreeGatherBoot": {
+        "$path": "src/server/scripts/BigTreeGather.server.lua"
+      },
+
       "WorldLoot": {
         "$path": "src/server/scripts/WorldLoot.server.lua"
       }

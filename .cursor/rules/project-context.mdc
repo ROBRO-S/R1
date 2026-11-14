@@ -20,12 +20,15 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 | `src/server/scripts/WorldLoot.server.lua` | `ServerScriptService.WorldLoot` | ProximityPrompt на Stick/SmallRock/FistWeapon/Axe/Pickaxe/дроп; `SpawnWorldLoot` |
 | `src/server/TerrainGenerator.module.luau` | `ServerScriptService.TerrainGenerator` | Воксельный рельеф и пруды |
 | `src/server/ObjectGenerator.module.luau` | `ServerScriptService.ObjectGenerator` | Деревья, ветки, камни; MediumRock с атрибутом `HP` |
-| `src/server/ResourceRespawnManager.module.luau` | `ServerScriptService.ResourceRespawnManager` | Очередь респавна (1/тик): MegaTree 90с, MediumRock 60с |
-| `src/server/scripts/FistWeapon.server.lua` | `ServerScriptService.FistWeapon` | Tool кастетов + held-Tool (ресурсы/Axe/Pickaxe); weld; бой кулаков; экип; старт Axe/Pickaxe combat |
-| `src/server/scripts/AxeCombat.module.luau` | `ServerScriptService.AxeCombat` | Топор: манекен + рубка MegaTree, вал + дроп Stick; подсказка при ударе по скале |
+| `src/server/ResourceRespawnManager.module.luau` | `ServerScriptService.ResourceRespawnManager` | Очередь респавна (1/тик): MegaTree 90с, BigTree 60с, MediumRock 60с |
+| `src/server/scripts/FistWeapon.server.lua` | `ServerScriptService.FistWeapon` | Tool кастетов + held-Tool (ресурсы/Axe/Pickaxe); weld; бой кулаков; экип; старт Axe/Pickaxe/BigTreeGather |
+| `src/server/scripts/AxeCombat.module.luau` | `ServerScriptService.AxeCombat` | Топор: манекен + рубка MegaTree (хит по мешу/`megaVisualAxis`, не Soil), вал + дроп Stick; подсказка по скале |
 | `src/server/scripts/AxeCombat.server.lua` | `ServerScriptService.AxeCombatBoot` | Тонкий boot → `AxeCombat.Start()` |
-| `src/server/scripts/PickaxeCombat.module.luau` | `ServerScriptService.PickaxeCombat` | Кирка: манекен + добыча MediumRock, осколки + дроп SmallRock; подсказка при ударе по дереву |
+| `src/server/scripts/PickaxeCombat.module.luau` | `ServerScriptService.PickaxeCombat` | Кирка: манекен + MediumRock; `Use an Axe!` только у MegaTree по `megaVisualAxis` |
 | `src/server/scripts/PickaxeCombat.server.lua` | `ServerScriptService.PickaxeCombatBoot` | Тонкий boot → `PickaxeCombat.Start()` |
+| `src/server/scripts/HoldGather.module.luau` | `ServerScriptService.HoldGather` | Общий hold-E: якорь у основания, анимация сбора, sway, ProximityPrompt (BigTree → ягоды) |
+| `src/server/scripts/BigTreeGather.module.luau` | `ServerScriptService.BigTreeGather` | Hold E на BigTree → Stick x2–3 **в инвентарь** + респавн 60с |
+| `src/server/scripts/BigTreeGather.server.lua` | `ServerScriptService.BigTreeGatherBoot` | Тонкий boot → `BigTreeGather.Start()` |
 | `src/server/scripts/ToolHints.module.luau` | `ServerScriptService.ToolHints` | Англ. подсказки «не тот инструмент», антиспам 1.5с → remote `ToolHint` |
 | `src/biome_config.json` | `ReplicatedStorage.biome_config` (StringValue) | Числа генерации + `mega_tree_hp` / `medium_rock_hp`. `syncRules.use = "text"` |
 | `src/items_config.json` | `ReplicatedStorage.items_config` (StringValue) | Предметы: kind, display_name, icon, max_stack, melee-статы… |
@@ -50,7 +53,7 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 
 Паттерн модуля: `local Foo = {}` → `function Foo.Method()` → `return Foo`. Точка входа генератора — `Generate()`. Конфиг мира — `ConfigLoader.Get()` (кэш на процесс) и `ConfigLoader.SpawnThresholds(cfg)` (накопленные пороги `thin < mega < stick < rock < boulder`). Конфиг предметов — `ItemsConfig.Get()` / `GetMelee` / `GetItem` / `MaxStack` / `DisplayName` / `TreeDamage` / `RockDamage` / `SwingAnimation`.
 
-Имена файлов Rojo: `*.server.lua` = Script, `*.client.lua` = LocalScript, `*.module.luau` = ModuleScript. Инстансы ассетов и клонов называются как файл/шаблон (`MegaTree`, `Stick`, `fistweapon_A`, `Axe`, `Pickaxe`). Комментарии по-русски. UI `display_name` и подсказки ToolHint — **английский** (`Fist Weapon`, `Stick`, `Rock`, `Axe`, `Pickaxe`, `Use an Axe!`). В новых и редактируемых модулях — Luau + `--!strict`. Отступы смешанные: табы в `TerrainGenerator`, `ConfigLoader`, `ItemsConfig`, `InventoryService`, `Inventory`, `FistStance`, `FistWeapon`, `WorldLoot`, `AxeCombat`, `PickaxeCombat`, `ToolHints`; 4 пробела в `Main` и `ObjectGenerator` — в файле не переключать.
+Имена файлов Rojo: `*.server.lua` = Script, `*.client.lua` = LocalScript, `*.module.luau` = ModuleScript. Инстансы ассетов и клонов называются как файл/шаблон (`MegaTree`, `Stick`, `fistweapon_A`, `Axe`, `Pickaxe`). Комментарии по-русски. UI `display_name` и подсказки ToolHint — **английский** (`Fist Weapon`, `Stick`, `Rock`, `Axe`, `Pickaxe`, `Use an Axe!`). В новых и редактируемых модулях — Luau + `--!strict`. Отступы смешанные: табы в `TerrainGenerator`, `ConfigLoader`, `ItemsConfig`, `InventoryService`, `Inventory`, `FistStance`, `FistWeapon`, `WorldLoot`, `AxeCombat`, `PickaxeCombat`, `ToolHints`, `HoldGather`, `BigTreeGather`; 4 пробела в `Main` и `ObjectGenerator` — в файле не переключать.
 
 Спавн: в начале `Main` сразу `Players.CharacterAutoLoads = false`; после готовности мира — прозрачный `SpawnLocation` без коллизии над рельефом, `LoadCharacter`, затем снова `CharacterAutoLoads = true`. Поднимать персонажа только если он застрял под землёй, не ставить на невидимую полку. Рядом со спавном `Main` ставит `workspace.TrainingDummy` (Humanoid 200 HP; после смерти пересоздаётся).
 
@@ -75,10 +78,25 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 
 ## Инструменты и ресурсы мира
 
-- **Только Axe** рубит `MegaTree` (`tree_damage`, HP = `biome_config.props.mega_tree_hp`). Вал → дроп Stick → `ResourceRespawnManager.Enqueue("MegaTree", …, 90)`.
+- **Только Axe** рубит `MegaTree` (`tree_damage`, HP = `biome_config.props.mega_tree_hp`). Вал → дроп Stick на землю → `Enqueue("MegaTree", …, 90)`.
 - **Только Pickaxe** долбит `MediumRock` (`rock_damage`, HP = `biome_config.props.medium_rock_hp`, по умолчанию 60). Shake → при HP≤0 осколки 0.8с + дроп 3–5 `SmallRock` → `Enqueue("MediumRock", …, 60)`.
+- **BigTree** (тонкое дерево, имя клона `BigTree`): hold E 1.2с → Stick x2–3 **сразу в инвентарь** (`InventoryService.AddItem`, не WorldLoot) → destroy → `Enqueue("BigTree", …, 60)`. UI prompt: ActionText=`Gather`, ObjectText=`Branches`.
 - **SmallRock** — только подбираемый лут, киркой не бьётся.
-- **FistWeapon** и неверный инструмент: урон по дереву/скале не наносится; `ToolHints` → `Use an Axe!` / `Use a Pickaxe!` (не чаще 1.5с).
+- **FistWeapon** и неверный инструмент: урон по дереву/скале не наносится; `ToolHints` → `Use an Axe!` / `Use a Pickaxe!` (не чаще 1.5с). Подсказка «Use an Axe!» — **только** у MegaTree, не у BigTree.
+
+### MegaTree хит (отшлифовано — не ломать)
+
+- **Не** мерять дистанцию до `PrimaryPart` / `Soil`: Soil часто съезжает от меша (десятки студов) и ломает рубку.
+- Ось дерева — `megaVisualAxis`: AABB непрозрачных частей **кроме** `Soil`.
+- Хит: overlap-бокс перед игроком ловит часть меша MegaTree (не Soil) + `closestPointOnPart` ≤ ~12 **и** flat до `megaVisualAxis` ≤ ~16; запас — flat до оси + `inFront`.
+- **Не** использовать полный `GetBoundingBox` как «ближайшую поверхность» для допуска удара: крона даёт ложные хиты издалека и ложные `Use an Axe!` у соседнего BigTree.
+- Константы: `TREE_PART_HIT_RANGE`, `TREE_AXIS_FLAT_RANGE` в `AxeCombat` (и flat-hint в Pickaxe/FistWeapon).
+
+### HoldGather / BigTreeGather (отшлифовано — не ломать)
+
+- Общий модуль `HoldGather`: анимация `HoldGather.GATHER_ANIM_ID` = `rbxassetid://125088678950361` (`Looped=true`, `Priority=Action3`); prompt на `Attachment` **у основания** (`HoldGatherAttach`), не на кроне/PrimaryPart — иначе MaxActivationDistance не дотягивается с земли.
+- `BigTreeGather`: `HOLD_DURATION=1.2`, `MIN_STICKS=2`…`MAX_STICKS=3`, дистанция проверки после Triggered — **flat XZ до якоря**, не 3D до `GetPivot()` (pivot высоких деревьев отбрасывал успешный hold).
+- Респавн: `ResourceRespawnManager.BIG_TREE_RESPAWN_TIME = 60`. Кусты ягод позже — тот же `HoldGather.Attach`.
 
 ## Что уже работает
 
@@ -90,8 +108,9 @@ Survival-карта в духе Don't Starve. Код только в Git; Studio
 6. **Инвентарь.** Хотбар+рюкзак, стаки, экип/toggle, G/drag дроп, DataStore вне Studio; старт: FistWeapon слот 1, Axe слот 2, Pickaxe слот 3.
 7. **Лут мира.** E подбор Stick/SmallRock/Axe/Pickaxe/FistWeapon; дроп обратно в мир; hover-подсказка.
 8. **FistWeapon.** Парные кастеты; стойка; блок; комбо 3 удара + серверный хитбокс.
-9. **Axe.** Экип+Grip; удар Action3; рубка MegaTree; респавн дерева.
+9. **Axe.** Экип+Grip; удар Action3; рубка MegaTree (хит по мешу/оси визуала); респавн 90с.
 10. **Pickaxe.** Экип+Grip; удар из `swing_animation`; добыча MediumRock; респавн скалы; дроп SmallRock.
 11. **ToolHints.** Неверный инструмент по MegaTree/MediumRock → английская подсказка на экране.
+12. **BigTreeGather.** Hold E → Gather/Branches → Stick x2–3 в инвентарь → респавн BigTree 60с.
 
-Не сделано: прочие предметы (мечи, кирки других тиров, `FistWeapon_gold`…), крафт, голод/здоровье, день/ночь, мобы, загрузочный экран, финальная моделька FistWeapon на земле.
+Не сделано: кусты ягод (через `HoldGather`), прочие предметы (мечи, кирки других тиров, `FistWeapon_gold`…), крафт, голод/здоровье, день/ночь, мобы, загрузочный экран, финальная моделька FistWeapon на земле.

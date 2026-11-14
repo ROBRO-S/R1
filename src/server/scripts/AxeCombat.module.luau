@@ -26,8 +26,9 @@ local DEFAULT_TREE_DAMAGE = 15
 local DEFAULT_TREE_HP = 75
 
 local MOB_RANGE = 12
--- До поверхности MegaTree (не до центра — модель огромная).
-local TREE_HIT_RANGE = 10
+-- Хит MegaTree: часть меша в overlap / рядом со стволом (Soil PrimaryPart НЕ использовать — он часто съезжает).
+local TREE_PART_HIT_RANGE = 12
+local TREE_AXIS_FLAT_RANGE = 16
 local TREE_SWAY_DEG = 3.5
 local TREE_SWAY_TIME = 0.14
 -- Падение вокруг основания (не вокруг pivot — иначе «ракета»).
@@ -327,26 +328,45 @@ local function hitDummy(attackerRoot: BasePart, mobDamage: number): boolean
 	return true
 end
 
--- Ближайшая точка bounding box модели к позиции игрока.
-local function closestPointOnModel(model: Model, worldPos: Vector3): (number, Vector3)
-	local cf, size = model:GetBoundingBox()
-	local localPos = cf:PointToObjectSpace(worldPos)
-	local half = size * 0.5
-	local clamped = Vector3.new(
-		math.clamp(localPos.X, -half.X, half.X),
-		math.clamp(localPos.Y, -half.Y, half.Y),
-		math.clamp(localPos.Z, -half.Z, half.Z)
-	)
-	local world = cf:PointToWorldSpace(clamped)
-	return (world - worldPos).Magnitude, world
+-- Ось/низ визуала без Soil: PrimaryPart=Soil часто далеко от меша и ломал хит (~50 студов).
+local function megaVisualAxis(tree: Model): Vector3
+	local minX, minY, minZ = math.huge, math.huge, math.huge
+	local maxX, maxY, maxZ = -math.huge, -math.huge, -math.huge
+	local any = false
+	for _, d in ipairs(tree:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name ~= "Soil" and d.Transparency < 1 then
+			any = true
+			local p = d.Position
+			local h = d.Size * 0.5
+			minX = math.min(minX, p.X - h.X)
+			minY = math.min(minY, p.Y - h.Y)
+			minZ = math.min(minZ, p.Z - h.Z)
+			maxX = math.max(maxX, p.X + h.X)
+			maxY = math.max(maxY, p.Y + h.Y)
+			maxZ = math.max(maxZ, p.Z + h.Z)
+		end
+	end
+	if not any then
+		return treeBasePosition(tree)
+	end
+	return Vector3.new((minX + maxX) * 0.5, minY, (minZ + maxZ) * 0.5)
 end
 
-local function findAnyTreeAncestor(inst: Instance?): Model?
+local function findMegaTreeAncestor(inst: Instance?): Model?
 	local node: Instance? = inst
 	while node and node ~= Workspace do
-		if node:IsA("Model")
-			and (node.Name == "MegaTree" or node.Name == "BigTree" or node.Name == "thin_tree")
-		then
+		if node:IsA("Model") and node.Name == "MegaTree" then
+			return node
+		end
+		node = node.Parent
+	end
+	return nil
+end
+
+local function findThinTreeAncestor(inst: Instance?): Model?
+	local node: Instance? = inst
+	while node and node ~= Workspace do
+		if node:IsA("Model") and (node.Name == "BigTree" or node.Name == "thin_tree") then
 			return node
 		end
 		node = node.Parent
@@ -408,38 +428,42 @@ end
 
 local function hitMegaTree(attackerRoot: BasePart, character: Model, treeDamage: number): boolean
 	local best: Model? = nil
-	local bestDist = TREE_HIT_RANGE
+	local bestDist = TREE_PART_HIT_RANGE
 	local otherTree: Model? = nil
+	local rootPos = attackerRoot.Position
 
-	-- 1) Overlap перед игроком — ловит ствол даже если центр дерева далеко.
-	local box = Vector3.new(16, 28, 16)
-	local hitCFrame = attackerRoot.CFrame * CFrame.new(0, 5, -(box.Z * 0.35))
+	-- 1) Часть меша MegaTree в боксе удара (Soil игнорируем).
+	local box = Vector3.new(12, 20, 12)
+	local hitCFrame = attackerRoot.CFrame * CFrame.new(0, 3, -5)
 	local overlap = OverlapParams.new()
 	overlap.FilterType = Enum.RaycastFilterType.Exclude
 	overlap.FilterDescendantsInstances = { character }
 	overlap.RespectCanCollide = false
 	for _, part in ipairs(Workspace:GetPartBoundsInBox(hitCFrame, box, overlap)) do
-		local tree = findAnyTreeAncestor(part)
-		if tree then
-			if tree.Name == "MegaTree" then
-				local dist = closestPointOnModel(tree, attackerRoot.Position)
-				if dist < bestDist then
+		if part.Name ~= "Soil" then
+			local mega = findMegaTreeAncestor(part)
+			if mega then
+				local dist = closestPointOnPart(part, rootPos)
+				local axisFlat = flatDist(rootPos, megaVisualAxis(mega))
+				-- Рядом с мешем + не под дальним краем кроны (ось по визуалу, не Soil).
+				if dist < bestDist and axisFlat <= TREE_AXIS_FLAT_RANGE then
 					bestDist = dist
-					best = tree
+					best = mega
 				end
 			elseif not otherTree then
-				otherTree = tree
+				otherTree = findThinTreeAncestor(part)
 			end
 		end
 	end
 
-	-- 2) Запас: ближайшая поверхность любого MegaTree в Workspace.
+	-- 2) Запас: у визуальной оси дерева.
 	if not best then
 		for _, child in ipairs(Workspace:GetChildren()) do
 			if child:IsA("Model") and child.Name == "MegaTree" then
-				local dist, closest = closestPointOnModel(child, attackerRoot.Position)
-				if dist < bestDist and inFront(attackerRoot, closest, -0.25) then
-					bestDist = dist
+				local axis = megaVisualAxis(child)
+				local flat = flatDist(rootPos, axis)
+				if flat < bestDist and flat <= TREE_AXIS_FLAT_RANGE and inFront(attackerRoot, axis, -0.35) then
+					bestDist = flat
 					best = child
 				end
 			end
@@ -448,25 +472,25 @@ local function hitMegaTree(attackerRoot: BasePart, character: Model, treeDamage:
 
 	if not best then
 		if otherTree then
-			print("AxeCombat: удар по", otherTree.Name, "— нужен MegaTree")
+			print("AxeCombat: удар по", otherTree.Name, "— рубка только MegaTree (сбор веток: E)")
 			return true
 		end
-		local nearestDist = math.huge
+		local nearestFlat = math.huge
 		local count = 0
 		for _, child in ipairs(Workspace:GetChildren()) do
 			if child:IsA("Model") and child.Name == "MegaTree" then
 				count += 1
-				local dist = closestPointOnModel(child, attackerRoot.Position)
-				if dist < nearestDist then
-					nearestDist = dist
+				local flat = flatDist(rootPos, megaVisualAxis(child))
+				if flat < nearestFlat then
+					nearestFlat = flat
 				end
 			end
 		end
 		print(string.format(
-			"AxeCombat: MegaTree не в досягаемости (найдено %d, ближайшая поверхность %.1f studs, нужно ≤ %.0f)",
+			"AxeCombat: MegaTree не в досягаемости (найдено %d, до оси визуала %.1f, лимит %.0f)",
 			count,
-			if nearestDist < math.huge then nearestDist else -1,
-			TREE_HIT_RANGE
+			if nearestFlat < math.huge then nearestFlat else -1,
+			TREE_AXIS_FLAT_RANGE
 		))
 		return false
 	end
@@ -479,7 +503,14 @@ local function hitMegaTree(attackerRoot: BasePart, character: Model, treeDamage:
 	local hp = ensureTreeHp(best)
 	hp = math.max(0, hp - treeDamage)
 	best:SetAttribute(ATTR_TREE_HP, hp)
-	print(string.format("AxeCombat: MegaTree −%d → HP %d/%d (dist %.1f)", treeDamage, hp, maxHp, bestDist))
+	print(string.format(
+		"AxeCombat: MegaTree −%d → HP %d/%d (part %.1f, axisFlat %.1f)",
+		treeDamage,
+		hp,
+		maxHp,
+		bestDist,
+		flatDist(rootPos, megaVisualAxis(best))
+	))
 
 	if hp <= 0 then
 		task.spawn(fallTree, best, attackerRoot)

@@ -12,6 +12,7 @@ local Workspace = game:GetService("Workspace")
 
 ResourceRespawnManager.MEGA_TREE_RESPAWN_TIME = 90
 ResourceRespawnManager.MEDIUM_ROCK_RESPAWN_TIME = 60
+ResourceRespawnManager.BIG_TREE_RESPAWN_TIME = 60
 ResourceRespawnManager.STICK_RESPAWN_TIME = 30
 
 local TICK_INTERVAL = 2
@@ -23,9 +24,11 @@ local FREE_SPOT_RADIUS = 80
 local DEFAULT_MEGA_HP = 75
 local DEFAULT_ROCK_HP = 60
 local DEFAULT_MEGA_RADIUS = 9
+local DEFAULT_THIN_RADIUS = 2.5
 local DEFAULT_BOULDER_RADIUS = 3.5
 local DEFAULT_EXCLUSION = 4
 local DEFAULT_LIFT = -2
+local DEFAULT_THIN_LIFT = 0
 local DEFAULT_SCALE = 1
 local DEFAULT_RAY_START = 200
 local DEFAULT_RAY_DEPTH = 300
@@ -418,6 +421,87 @@ local function tweenEmergePart(part: BasePart, finalCF: CFrame)
 	end
 end
 
+local function prepareBigTree(model: Model)
+	for _, child in ipairs(model:GetDescendants()) do
+		if child:IsA("BasePart") then
+			child.Transparency = 0
+			child.CanCollide = true
+			child.CanQuery = true
+		end
+	end
+	if not model.PrimaryPart then
+		local part = model:FindFirstChildWhichIsA("BasePart", true)
+		if part then
+			model.PrimaryPart = part
+		end
+	end
+	model.Name = "BigTree"
+	model:SetAttribute("GatherBusy", nil)
+	model:SetAttribute("HoldGatherAttached", nil)
+end
+
+local function spawnBigTree(origin: CFrame): boolean
+	local assets = ReplicatedStorage:FindFirstChild("assets")
+	local template = assets and assets:FindFirstChild("BigTree")
+	if not (template and template:IsA("Model")) then
+		warn("ResourceRespawnManager: нет assets.BigTree")
+		return false
+	end
+
+	local _, props = configProps()
+	local needRadius = DEFAULT_THIN_RADIUS
+	if typeof(props.thin_tree_radius) == "number" then
+		needRadius = props.thin_tree_radius
+	end
+	local scale = if typeof(props.thin_tree_scale) == "number" then props.thin_tree_scale else DEFAULT_SCALE
+	local lift = if typeof(props.thin_tree_lift) == "number" then props.thin_tree_lift else DEFAULT_THIN_LIFT
+
+	local x, z, foundFree = pickSpawnXZ(origin, needRadius)
+	local hit = groundHit(x, z)
+	local groundY = if hit then hit.Position.Y else origin.Position.Y
+	local spawnPos = Vector3.new(x, groundY, z)
+
+	if playersNear(spawnPos, PLAYER_CLEAR_RADIUS) then
+		return false
+	end
+
+	local model = template:Clone()
+	if scale ~= 1 then
+		pcall(function()
+			model:ScaleTo(scale)
+		end)
+	end
+	prepareBigTree(model)
+
+	local yaw = if foundFree then math.random() * math.pi * 2 else select(2, origin:ToOrientation())
+
+	model.Parent = Workspace
+	model:PivotTo(CFrame.new(x, groundY, z) * CFrame.Angles(0, yaw, 0))
+	local minY = minPartY(model)
+	if minY < math.huge then
+		model:PivotTo(model:GetPivot() + Vector3.new(0, groundY - minY, 0))
+	end
+	if lift ~= 0 then
+		model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
+	end
+	anchorAll(model)
+
+	local finalPivot = model:GetPivot()
+	if playersNear(finalPivot.Position, PLAYER_CLEAR_RADIUS) then
+		model:Destroy()
+		return false
+	end
+
+	tweenEmerge(model, finalPivot)
+	print(string.format(
+		"ResourceRespawnManager: BigTree респавн%s (%.0f, %.0f)",
+		if foundFree then " на новом месте" else " на старом месте",
+		x,
+		z
+	))
+	return true
+end
+
 local function spawnMediumRock(origin: CFrame): boolean
 	local assets = ReplicatedStorage:FindFirstChild("assets")
 	local template = assets and assets:FindFirstChild("MediumRock")
@@ -477,6 +561,9 @@ end
 local function trySpawn(entry: QueueEntry): boolean
 	if entry.assetName == "MegaTree" then
 		return spawnMegaTree(entry.originCFrame)
+	end
+	if entry.assetName == "BigTree" then
+		return spawnBigTree(entry.originCFrame)
 	end
 	if entry.assetName == "MediumRock" then
 		return spawnMediumRock(entry.originCFrame)
