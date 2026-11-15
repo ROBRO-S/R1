@@ -1,15 +1,18 @@
 --!strict
--- Шкала HP над обычными мобами (атрибут ShowMobHealthBar) + искры при уроне.
+-- Шкала HP над мобами: появляется с первого удара + цифры урона.
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local HealthBar = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("HealthBar"))
 
-local BAR_WIDTH = 80
-local BAR_HEIGHT = 11
-local BILLBOARD_OFFSET = Vector3.new(0, 2.8, 0)
+-- Как у игрока (сердце + цифры), чуть компактнее экранной шкалы.
+local BAR_WIDTH = 96
+local BAR_HEIGHT = 12
+local BILLBOARD_OFFSET = Vector3.new(0, 2.6, 0)
+local DAMAGE_FADE = 0.7
 
 type MobEntry = {
 	bar: any,
@@ -18,9 +21,22 @@ type MobEntry = {
 	maxConn: RBXScriptConnection?,
 	ancestryConn: RBXScriptConnection?,
 	lastHealth: number,
+	revealed: boolean,
 }
 
 local tracked: { [Model]: MobEntry } = {}
+
+local function resolveAdornee(model: Model): BasePart?
+	local head = model:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		return head
+	end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		return root
+	end
+	return model.PrimaryPart
+end
 
 local function emitSparks(model: Model)
 	local root = model:FindFirstChild("HumanoidRootPart")
@@ -67,6 +83,60 @@ local function emitSparks(model: Model)
 	end
 end
 
+local function spawnDamageNumber(model: Model, amount: number)
+	local adornee = resolveAdornee(model)
+	if not adornee then
+		return
+	end
+
+	local dealt = math.max(1, math.floor(amount + 0.5))
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "DamageNumber"
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.Size = UDim2.fromOffset(72, 28)
+	gui.MaxDistance = 90
+	gui.Adornee = adornee
+	gui.StudsOffsetWorldSpace = Vector3.new(
+		(math.random() - 0.5) * 1.6,
+		1.1 + math.random() * 0.4,
+		(math.random() - 0.5) * 0.6
+	)
+	gui.Parent = model
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Value"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 18
+	label.TextColor3 = Color3.fromRGB(255, 230, 200)
+	label.TextStrokeColor3 = Color3.fromRGB(40, 20, 10)
+	label.TextStrokeTransparency = 0.45
+	label.TextTransparency = 0.28
+	label.Text = tostring(dealt)
+	label.Parent = gui
+
+	local startOffset = gui.StudsOffsetWorldSpace
+	local goalOffset = startOffset + Vector3.new((math.random() - 0.5) * 0.5, 1.6, 0)
+
+	local move = TweenService:Create(
+		gui,
+		TweenInfo.new(DAMAGE_FADE, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ StudsOffsetWorldSpace = goalOffset }
+	)
+	local fade = TweenService:Create(
+		label,
+		TweenInfo.new(DAMAGE_FADE, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ TextTransparency = 1, TextStrokeTransparency = 1 }
+	)
+	move:Play()
+	fade:Play()
+	fade.Completed:Connect(function()
+		gui:Destroy()
+	end)
+end
+
 local function untrack(model: Model)
 	local entry = tracked[model]
 	if not entry then
@@ -95,18 +165,7 @@ local function track(model: Model)
 		return
 	end
 
-	local adornee: BasePart? = nil
-	local head = model:FindFirstChild("Head")
-	if head and head:IsA("BasePart") then
-		adornee = head
-	else
-		local root = model:FindFirstChild("HumanoidRootPart")
-		if root and root:IsA("BasePart") then
-			adornee = root
-		else
-			adornee = model.PrimaryPart
-		end
-	end
+	local adornee = resolveAdornee(model)
 	if not adornee then
 		return
 	end
@@ -120,10 +179,11 @@ local function track(model: Model)
 	billboard.Name = "MobHealthBar"
 	billboard.AlwaysOnTop = true
 	billboard.LightInfluence = 0
-	billboard.Size = UDim2.fromOffset(BAR_WIDTH, BAR_HEIGHT + 6)
+	billboard.Size = UDim2.fromOffset(BAR_WIDTH + 8, BAR_HEIGHT + 10)
 	billboard.StudsOffsetWorldSpace = BILLBOARD_OFFSET
 	billboard.MaxDistance = 80
 	billboard.Adornee = adornee
+	billboard.Enabled = false
 	billboard.Parent = model
 
 	local bar = HealthBar.Create(billboard, {
@@ -144,6 +204,7 @@ local function track(model: Model)
 		maxConn = nil,
 		ancestryConn = nil,
 		lastHealth = humanoid.Health,
+		revealed = false,
 	}
 	tracked[model] = entry
 
@@ -153,15 +214,19 @@ local function track(model: Model)
 	sync()
 
 	entry.healthConn = humanoid.HealthChanged:Connect(function(hp)
-		if hp < entry.lastHealth - 0.05 then
+		local dealt = entry.lastHealth - hp
+		if dealt > 0.05 then
+			if not entry.revealed then
+				entry.revealed = true
+			end
+			billboard.Enabled = true
 			emitSparks(model)
+			spawnDamageNumber(model, dealt)
 		end
 		entry.lastHealth = hp
 		bar.SetHealth(hp, humanoid.MaxHealth)
 		if hp <= 0 then
 			billboard.Enabled = false
-		else
-			billboard.Enabled = true
 		end
 	end)
 	entry.maxConn = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(sync)
