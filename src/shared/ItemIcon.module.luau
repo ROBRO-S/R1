@@ -104,11 +104,25 @@ local function makeToolPart(assetName: string, previewName: string): BasePart
 	return part
 end
 
+local function makeMetalPiecePart(): BasePart
+	-- Заглушка: позже заменить ассетом.
+	local part = Instance.new("Part")
+	part.Name = "MetalPiecePreview"
+	part.Size = Vector3.new(1.2, 0.25, 0.7)
+	part.Color = Color3.fromRGB(140, 145, 155)
+	part.Material = Enum.Material.Metal
+	part.CFrame = CFrame.Angles(math.rad(15), math.rad(35), math.rad(10))
+	prepareClone(part)
+	return part
+end
+
 local function previewPartFor(itemId: string): BasePart?
 	if itemId == "Stick" then
 		return makeStickPart()
 	elseif itemId == "SmallRock" then
 		return makeRockPart()
+	elseif itemId == "MetalPiece" then
+		return makeMetalPiecePart()
 	elseif itemId == "FistWeapon" then
 		return makeFistPart()
 	elseif itemId == "Axe" then

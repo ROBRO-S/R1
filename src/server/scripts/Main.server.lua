@@ -8,6 +8,9 @@ local SSS = game:GetService("ServerScriptService")
 local TerrainGen = require(SSS.TerrainGenerator)
 local ObjectGen = require(SSS.ObjectGenerator)
 local ConfigLoader = require(SSS.ConfigLoader)
+local TrainingDummy = require(SSS.TrainingDummy)
+
+local PLAYER_MAX_HEALTH = 100
 
 local function configStamp(cfg)
     local probs = cfg.probabilities
@@ -103,56 +106,15 @@ local function ensureSpawnLocation()
     end
 end
 
--- Манекен у спавна: проверка хитбокса/урона FistWeapon.
-local function ensureTrainingDummy()
-    local old = workspace:FindFirstChild("TrainingDummy")
-    if old then
-        old:Destroy()
+local function applyPlayerHealth(character)
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        humanoid = character:WaitForChild("Humanoid", 5)
     end
-
-    local x, z = 14, 0
-    local ground = surfaceY(x, z)
-
-    local model = Instance.new("Model")
-    model.Name = "TrainingDummy"
-
-    local function addPart(name, size, offset, color)
-        local part = Instance.new("Part")
-        part.Name = name
-        part.Size = size
-        part.Anchored = true
-        part.CanCollide = true
-        part.Massless = true
-        part.Material = Enum.Material.SmoothPlastic
-        part.Color = color
-        part.CFrame = CFrame.new(x, ground, z) * CFrame.new(offset)
-        part.Parent = model
-        return part
+    if humanoid and humanoid:IsA("Humanoid") then
+        humanoid.MaxHealth = PLAYER_MAX_HEALTH
+        humanoid.Health = PLAYER_MAX_HEALTH
     end
-
-    local root = addPart("HumanoidRootPart", Vector3.new(2, 2, 1), Vector3.new(0, 3, 0), Color3.fromRGB(190, 150, 110))
-    addPart("Head", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, 4.6, 0), Color3.fromRGB(220, 180, 140))
-    addPart("Left Arm", Vector3.new(1, 2, 1), Vector3.new(-1.5, 3, 0), Color3.fromRGB(190, 150, 110))
-    addPart("Right Arm", Vector3.new(1, 2, 1), Vector3.new(1.5, 3, 0), Color3.fromRGB(190, 150, 110))
-    addPart("Left Leg", Vector3.new(1, 2, 1), Vector3.new(-0.5, 1, 0), Color3.fromRGB(80, 90, 120))
-    addPart("Right Leg", Vector3.new(1, 2, 1), Vector3.new(0.5, 1, 0), Color3.fromRGB(80, 90, 120))
-
-    local humanoid = Instance.new("Humanoid")
-    humanoid.Name = "Humanoid"
-    humanoid.MaxHealth = 200
-    humanoid.Health = 200
-    humanoid.DisplayName = "Манекен"
-    humanoid.WalkSpeed = 0
-    humanoid.JumpPower = 0
-    humanoid.AutoRotate = false
-    humanoid.Parent = model
-
-    model.PrimaryPart = root
-    model.Parent = workspace
-
-    humanoid.Died:Connect(function()
-        task.delay(1.5, ensureTrainingDummy)
-    end)
 end
 
 local function hasLivingCharacter(player)
@@ -175,6 +137,7 @@ local function loadCharacterNow(player)
             return
         end
         if hasLivingCharacter(player) then
+            applyPlayerHealth(player.Character :: Model)
             liftCharacter(player.Character :: Model)
             print("Игрок заспавнен: " .. player.Name)
             return
@@ -202,6 +165,7 @@ local function loadCharacterNow(player)
             if not ch:FindFirstChild("HumanoidRootPart") then
                 ch:WaitForChild("HumanoidRootPart", 5)
             end
+            applyPlayerHealth(ch)
             liftCharacter(ch)
             print("Игрок заспавнен: " .. player.Name)
             return
@@ -218,26 +182,25 @@ local function spawnPlayer(player)
     task.spawn(loadCharacterNow, player)
 end
 
+local function onCharacterAdded(character)
+    task.defer(applyPlayerHealth, character)
+    if worldReady then
+        task.defer(liftCharacter, character)
+    end
+end
+
 Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(character)
-        if worldReady then
-            task.defer(liftCharacter, character)
-        end
-    end)
+    player.CharacterAdded:Connect(onCharacterAdded)
     spawnPlayer(player)
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
-    player.CharacterAdded:Connect(function(character)
-        if worldReady then
-            task.defer(liftCharacter, character)
-        end
-    end)
+    player.CharacterAdded:Connect(onCharacterAdded)
 end
 
 local function releasePlayers()
     ensureSpawnLocation()
-    ensureTrainingDummy()
+    TrainingDummy.Ensure(surfaceY)
     worldReady = true
     -- После готовности мира обычный автоспавн/респавн снова включён.
     Players.CharacterAutoLoads = true

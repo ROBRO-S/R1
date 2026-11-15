@@ -11,7 +11,8 @@
     "damages": [50, 14, 22],
     "hitbox": [4.5, 4.5, 4.5],
     "knockback": 40,
-    "block_dot": 0.2
+    "block_dot": 0.2,
+    "defence": 50
   },
   "Axe": {
     "kind": "melee",
@@ -58,6 +59,13 @@
     "display_name": "Rock",
     "icon": "",
     "world_name": "SmallRock",
+    "max_stack": 99
+  },
+  "MetalPiece": {
+    "kind": "resource",
+    "display_name": "Metal Piece",
+    "icon": "",
+    "world_name": "MetalPiece",
     "max_stack": 99
   }
 }

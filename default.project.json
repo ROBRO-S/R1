@@ -10,6 +10,11 @@
       "pattern": "**/items_config.json",
       "use": "text",
       "suffix": ".json"
+    },
+    {
+      "pattern": "**/craft_config.json",
+      "use": "text",
+      "suffix": ".json"
     }
   ],
   "tree": {
@@ -30,6 +35,10 @@
         "$path": "src/items_config.json"
       },
 
+      "craft_config": {
+        "$path": "src/craft_config.json"
+      },
+
       "Shared": {
         "$className": "Folder",
         "ItemCatalog": {
@@ -37,6 +46,12 @@
         },
         "ItemIcon": {
           "$path": "src/shared/ItemIcon.module.luau"
+        },
+        "CraftCatalog": {
+          "$path": "src/shared/CraftCatalog.module.luau"
+        },
+        "HealthBar": {
+          "$path": "src/shared/HealthBar.module.luau"
         }
       }
     },
@@ -108,8 +123,24 @@
         "$path": "src/server/scripts/BigTreeGather.server.lua"
       },
 
+      "CraftService": {
+        "$path": "src/server/scripts/CraftService.module.luau"
+      },
+
+      "CraftBoot": {
+        "$path": "src/server/scripts/Craft.server.lua"
+      },
+
       "WorldLoot": {
         "$path": "src/server/scripts/WorldLoot.server.lua"
+      },
+
+      "TrainingDummy": {
+        "$path": "src/server/scripts/TrainingDummy.module.luau"
+      },
+
+      "CombatDefence": {
+        "$path": "src/server/scripts/CombatDefence.module.luau"
       }
     },
 
