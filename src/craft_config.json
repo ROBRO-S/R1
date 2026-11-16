@@ -1,0 +1,38 @@
+{
+  "categories": [
+    {
+      "id": "Weapons",
+      "display_name": "Weapons",
+      "icon": "⚔",
+      "recipes": ["Axe", "Pickaxe", "FistWeapon"]
+    }
+  ],
+  "recipes": {
+    "Axe": {
+      "result": "Axe",
+      "count": 1,
+      "description": "Stone axe for chopping trees.",
+      "costs": [
+        { "id": "Stick", "count": 2 },
+        { "id": "SmallRock", "count": 2 }
+      ]
+    },
+    "Pickaxe": {
+      "result": "Pickaxe",
+      "count": 1,
+      "description": "Stone pickaxe for breaking rocks.",
+      "costs": [
+        { "id": "Stick", "count": 2 },
+        { "id": "SmallRock", "count": 3 }
+      ]
+    },
+    "FistWeapon": {
+      "result": "FistWeapon",
+      "count": 1,
+      "description": "Paired knuckles for close combat.",
+      "costs": [
+        { "id": "MetalPiece", "count": 2 }
+      ]
+    }
+  }
+}

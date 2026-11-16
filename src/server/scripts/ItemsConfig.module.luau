@@ -27,6 +27,8 @@ export type MeleeStats = {
 	hitbox: { number },
 	knockback: number,
 	block_dot: number,
+	-- Прочность блока (щит). Нет / 0 → блок не держит урон в defence-бар.
+	defence: number?,
 }
 
 export type ItemInfo = {
@@ -106,6 +108,7 @@ local function fallback(): { [string]: any }
 	local fists = meleeFallback()
 	local fistInfo: any = fists
 	fistInfo.max_stack = 1
+	fistInfo.defence = 50
 	local axe = axeMeleeFallback()
 	local axeInfo: any = axe
 	axeInfo.max_stack = 1
@@ -120,6 +123,8 @@ local function fallback(): { [string]: any }
 		Pickaxe = pickaxeInfo,
 		Stick = resourceFallback("Stick", "Stick", 99),
 		SmallRock = resourceFallback("Rock", "SmallRock", 99),
+		-- Заглушка: пока нет добычи металла в мире.
+		MetalPiece = resourceFallback("Metal Piece", "MetalPiece", 99),
 	}
 end
 
@@ -400,6 +405,15 @@ function ItemsConfig.SwingAnimation(stats: MeleeStats): string
 		return anim
 	end
 	return ""
+end
+
+-- Прочность блока. Нет defence → 0 (щит не активен).
+function ItemsConfig.Defence(stats: MeleeStats): number
+	local d = (stats :: any).defence
+	if typeof(d) == "number" and d > 0 then
+		return d
+	end
+	return 0
 end
 
 return ItemsConfig

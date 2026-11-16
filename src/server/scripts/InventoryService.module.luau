@@ -319,6 +319,58 @@ function InventoryService.SyncTools(player: Player)
 	end
 end
 
+function InventoryService.CountItem(player: Player, itemId: string): number
+	local data = session[player]
+	if not data then
+		return 0
+	end
+	local total = 0
+	for _, stack in pairs(data.slots) do
+		if stack.id == itemId then
+			total += stack.count
+		end
+	end
+	return total
+end
+
+function InventoryService.ConsumeItem(player: Player, itemId: string, amount: number): boolean
+	local need = math.max(0, math.floor(amount))
+	if need <= 0 then
+		return true
+	end
+	local data = session[player]
+	if not data then
+		return false
+	end
+	if InventoryService.CountItem(player, itemId) < need then
+		return false
+	end
+
+	local left = need
+	for slot = 1, SLOT_COUNT do
+		if left <= 0 then
+			break
+		end
+		local stack = data.slots[slot]
+		if stack and stack.id == itemId then
+			local take = math.min(stack.count, left)
+			stack.count -= take
+			left -= take
+			if stack.count <= 0 then
+				data.slots[slot] = nil
+				if data.equipped == slot then
+					data.equipped = 0
+				end
+				destroyToolInSlot(player, slot)
+			end
+		end
+	end
+
+	InventoryService.WriteState(player)
+	InventoryService.SyncTools(player)
+	return left <= 0
+end
+
 function InventoryService.AddItem(player: Player, itemId: string, amount: number?): number?
 	if not ItemsConfig.IsKnown(itemId) then
 		return nil
@@ -508,6 +560,7 @@ ensureRemote("ToolHint")
 ensureRemote("EquipSlot")
 ensureRemote("FistBlock")
 ensureRemote("FistAttack")
+ensureRemote("CraftItem")
 
 dropRemote.OnServerEvent:Connect(function(player: Player, slotAny: any)
 	if typeof(slotAny) ~= "number" then

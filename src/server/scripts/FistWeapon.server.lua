@@ -10,6 +10,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local ItemsConfig = require(ServerScriptService:WaitForChild("ItemsConfig"))
 local InventoryService = require(ServerScriptService:WaitForChild("InventoryService"))
+local CombatDefence = require(ServerScriptService:WaitForChild("CombatDefence"))
 type MeleeStats = ItemsConfig.MeleeStats
 
 -- Топор / кирка: remote + хит логика (boot-скрипты могли не подняться в Studio).
@@ -344,20 +345,14 @@ local function resolveHit(attacker: Player, step: number, stats: MeleeStats)
 			if humanoid and humanoid.Health > 0 and not hitHumanoids[humanoid] then
 				hitHumanoids[humanoid] = true
 
-				local finalDamage = damage
 				local targetRoot = getRootPart(model)
 				local blocked = model:GetAttribute("IsBlocking") == true
 					and targetRoot ~= nil
 					and isFacingAttacker(targetRoot, attackerRoot, stats.block_dot)
-				if blocked then
-					finalDamage = 0
-				end
+				-- Блок с defence → урон в щит; без щита / не блок → в HP.
+				local hpDamage = CombatDefence.ApplyDamage(model, damage, { blocked = blocked })
 
-				if finalDamage > 0 then
-					humanoid:TakeDamage(finalDamage)
-				end
-
-				if step >= comboLength and not blocked and targetRoot then
+				if step >= comboLength and hpDamage > 0 and targetRoot then
 					applyKnockback(attackerRoot, targetRoot, stats.knockback)
 				end
 			end
@@ -423,6 +418,8 @@ local function createTool(): Tool
 		weldedCharacter = character
 		weldFist(character, "Right")
 		weldFist(character, "Left")
+		local equippedId = tool:GetAttribute(ATTR_ITEM)
+		CombatDefence.SyncFromItem(character, if typeof(equippedId) == "string" then equippedId else ITEM_ID)
 
 		local player = Players:GetPlayerFromCharacter(character)
 		if player and InventoryService.GetSession(player) then
@@ -440,6 +437,7 @@ local function createTool(): Tool
 		if character then
 			clearVisuals(character)
 			clearBlocking(character)
+			CombatDefence.Clear(character)
 		end
 
 		local parent = tool.Parent
@@ -486,6 +484,8 @@ local function hookHeldTool(tool: Tool)
 		if not character or not character:IsA("Model") then
 			return
 		end
+		local itemId = tool:GetAttribute(ATTR_ITEM)
+		CombatDefence.SyncFromItem(character, if typeof(itemId) == "string" then itemId else tool.Name)
 		local player = Players:GetPlayerFromCharacter(character)
 		if player and InventoryService.GetSession(player) then
 			local slot = tool:GetAttribute(ATTR_SLOT)
@@ -503,6 +503,10 @@ local function hookHeldTool(tool: Tool)
 		local player = backpack.Parent
 		if not (player and player:IsA("Player")) then
 			return
+		end
+		local ch = player.Character
+		if ch then
+			CombatDefence.Clear(ch)
 		end
 		if InventoryService.GetSession(player) then
 			InventoryService.SetEquipped(player, 0)
@@ -770,6 +774,7 @@ InventoryService.SetVisualCleanup(function(player: Player)
 	if character then
 		clearVisuals(character)
 		clearBlocking(character)
+		CombatDefence.Clear(character)
 	end
 end)
 
@@ -790,6 +795,7 @@ local function equipSlot(player: Player, slot: number)
 
 	if slot < 1 then
 		humanoid:UnequipTools()
+		CombatDefence.Clear(character)
 		InventoryService.SetEquipped(player, 0)
 		return
 	end
@@ -797,6 +803,7 @@ local function equipSlot(player: Player, slot: number)
 	local stack = data.slots[slot]
 	if not stack then
 		humanoid:UnequipTools()
+		CombatDefence.Clear(character)
 		InventoryService.SetEquipped(player, 0)
 		return
 	end

@@ -20,6 +20,7 @@ local FALLBACK: { [string]: ItemInfo } = {
 	Pickaxe = { kind = "melee", display_name = "Pickaxe", icon = "" },
 	Stick = { kind = "resource", display_name = "Stick", icon = "" },
 	SmallRock = { kind = "resource", display_name = "Rock", icon = "" },
+	MetalPiece = { kind = "resource", display_name = "Metal Piece", icon = "" },
 }
 
 local function relaxJson(text: string): string

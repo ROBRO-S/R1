@@ -29,6 +29,7 @@ local FALLBACK_NAMES: { [string]: string } = {
 	Pickaxe = "Pickaxe",
 	Stick = "Stick",
 	SmallRock = "Rock",
+	MetalPiece = "Metal Piece",
 }
 
 local selectedSlot = 1
@@ -508,14 +509,15 @@ backpackButton.MouseButton1Click:Connect(function()
 end)
 
 local rows = math.ceil(TOTAL_SLOTS / GRID_COLS)
-local panelWidth = GRID_COLS * SLOT_SIZE + (GRID_COLS - 1) * SLOT_GAP + 16
-local panelHeight = rows * SLOT_SIZE + (rows - 1) * SLOT_GAP + 16
+local panelWidth = GRID_COLS * SLOT_SIZE + (GRID_COLS - 1) * SLOT_GAP + 24
+local TITLE_H = 28
+local panelHeight = TITLE_H + rows * SLOT_SIZE + (rows - 1) * SLOT_GAP + 24
 
 backpackFrame = Instance.new("Frame")
 backpackFrame.Name = "Backpack"
 backpackFrame.Visible = false
-backpackFrame.AnchorPoint = Vector2.new(0.5, 1)
-backpackFrame.Position = UDim2.new(0.5, 0, 1, -(SLOT_SIZE + 28))
+backpackFrame.AnchorPoint = Vector2.new(1, 0.5)
+backpackFrame.Position = UDim2.new(1, -28, 0.5, -20)
 backpackFrame.Size = UDim2.fromOffset(panelWidth, panelHeight)
 backpackFrame.BackgroundColor3 = PAPER_DARK
 backpackFrame.BorderSizePixel = 0
@@ -523,11 +525,23 @@ backpackFrame.Parent = gui
 makeCorner(backpackFrame, 10)
 makeStroke(backpackFrame, PAPER_EDGE, 2)
 
+local invTitle = Instance.new("TextLabel")
+invTitle.Name = "Title"
+invTitle.BackgroundTransparency = 1
+invTitle.Position = UDim2.fromOffset(12, 6)
+invTitle.Size = UDim2.new(1, -24, 0, TITLE_H - 4)
+invTitle.Font = Enum.Font.GothamBold
+invTitle.TextSize = 18
+invTitle.TextColor3 = Color3.fromRGB(245, 235, 210)
+invTitle.TextXAlignment = Enum.TextXAlignment.Left
+invTitle.Text = "Inventory"
+invTitle.Parent = backpackFrame
+
 local grid = Instance.new("Frame")
 grid.Name = "Grid"
 grid.BackgroundTransparency = 1
-grid.Position = UDim2.fromOffset(8, 8)
-grid.Size = UDim2.new(1, -16, 1, -16)
+grid.Position = UDim2.fromOffset(12, TITLE_H + 4)
+grid.Size = UDim2.new(1, -24, 1, -(TITLE_H + 16))
 grid.Parent = backpackFrame
 
 local gridLayout = Instance.new("UIGridLayout")
